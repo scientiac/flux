@@ -256,7 +256,7 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
                                         setSelectedAsset(item);
                                         setDeleteConfirmVisible(true);
                                     }}
-                                    style={{ backgroundColor: 'rgba(255,255,255,0.8)', margin: 2 }}
+                                    style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
                                 />
                             </View>
                         </TouchableOpacity>

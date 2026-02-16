@@ -154,7 +154,7 @@ export default function Index() {
                         placeholder="Filter your repos..."
                         onChangeText={setSearchQuery}
                         value={searchQuery}
-                        style={styles.searchbar}
+                        style={[styles.searchbar, { backgroundColor: theme.colors.surfaceVariant }]}
                         inputStyle={styles.searchbarInput}
                         selectionColor={theme.colors.primary}
                         icon="filter-variant"

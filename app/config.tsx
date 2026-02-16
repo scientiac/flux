@@ -97,7 +97,7 @@ export default function Config() {
                         onChangeText={setContentDir}
                         mode="flat"
                         placeholder="e.g. content/posts"
-                        style={styles.capsuleInput}
+                        style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant }]}
                         selectionColor={theme.colors.primary}
                         activeUnderlineColor={theme.colors.primary}
                         left={<TextInput.Icon icon="folder-outline" />}
@@ -112,7 +112,7 @@ export default function Config() {
                         onChangeText={setAssetsDir}
                         mode="flat"
                         placeholder="e.g. static/assets"
-                        style={styles.capsuleInput}
+                        style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant }]}
                         selectionColor={theme.colors.primary}
                         activeUnderlineColor={theme.colors.primary}
                         left={<TextInput.Icon icon="image-outline" />}

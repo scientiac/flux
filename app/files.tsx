@@ -31,6 +31,7 @@ const formatRelativeDate = (dateString: string) => {
 
 // Sub-component for Image Naming Dialog
 const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string }) => {
+    const theme = useTheme();
     const [localValue, setLocalValue] = useState(initialValue);
     useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
 
@@ -44,6 +45,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
                     onChangeText={setLocalValue}
                     mode="flat"
                     autoFocus
+                    style={{ backgroundColor: theme.colors.surfaceVariant }}
                 />
             </Dialog.Content>
             <Dialog.Actions>
@@ -71,7 +73,7 @@ const RenameDialog = ({ visible, onDismiss, onRename, initialValue, title = "Ren
                     onChangeText={setLocalValue}
                     mode="flat"
                     autoFocus
-                    style={styles.dialogInput}
+                    style={[styles.dialogInput, { backgroundColor: theme.colors.surfaceVariant }]}
                     selectionColor={theme.colors.primary}
                     activeUnderlineColor={theme.colors.primary}
                 />
@@ -100,7 +102,7 @@ const NewFileDialog = ({ visible, onDismiss, onCreate, title, label }: { visible
                     onChangeText={setLocalValue}
                     mode="flat"
                     autoFocus
-                    style={styles.dialogInput}
+                    style={[styles.dialogInput, { backgroundColor: theme.colors.surfaceVariant }]}
                     selectionColor={theme.colors.primary}
                     activeUnderlineColor={theme.colors.primary}
                 />
@@ -115,6 +117,7 @@ const NewFileDialog = ({ visible, onDismiss, onCreate, title, label }: { visible
 
 // Sub-component for Publish Draft Dialog
 const PublishDraftDialog = ({ visible, onDismiss, onPublish, initialTitle }: { visible: boolean, onDismiss: () => void, onPublish: (commitMsg: string) => void, initialTitle: string }) => {
+    const theme = useTheme();
     const [commitMsg, setCommitMsg] = useState(`Create ${initialTitle}`);
 
     useEffect(() => {
@@ -132,6 +135,7 @@ const PublishDraftDialog = ({ visible, onDismiss, onPublish, initialTitle }: { v
                     value={commitMsg}
                     onChangeText={setCommitMsg}
                     mode="flat"
+                    style={{ backgroundColor: theme.colors.surfaceVariant }}
                 />
             </Dialog.Content>
             <Dialog.Actions>
@@ -167,7 +171,7 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
                         iconColor={theme.colors.error}
                         size={18}
                         onPress={onDelete}
-                        style={{ backgroundColor: 'rgba(255,255,255,0.8)', margin: 2 }}
+                        style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
                     />
                 </View>
             </View>
@@ -624,7 +628,7 @@ export default function Files() {
                     placeholder={`Search ${mode}...`}
                     onChangeText={setSearchQuery}
                     value={searchQuery}
-                    style={styles.searchbar}
+                    style={[styles.searchbar, { backgroundColor: theme.colors.surfaceVariant }]}
                     inputStyle={styles.searchbarInput}
                     elevation={0}
                 />
