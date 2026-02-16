@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
 import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, TextInput, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -110,7 +110,6 @@ const MemoizedMarkdownImage = React.memo(({ uri, headers, alt, theme }: any) => 
                     borderColor: theme.colors.outlineVariant
                 }}
                 contentFit="contain"
-                transition={200}
                 cachePolicy="disk"
             />
             {alt ? (
@@ -348,6 +347,9 @@ export default function Editor() {
     const [mode, setMode] = useState('edit');
     const editorSelectedIndex = ['edit', 'preview', 'assets'].indexOf(mode);
 
+    // Snapshot content for preview to avoid re-renders on every keystroke
+    const [previewContent, setPreviewContent] = useState('');
+
     // Asset Staging
     const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({});
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
@@ -368,7 +370,7 @@ export default function Editor() {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
     }, []);
 
-    const markdownStyle = StyleSheet.create({
+    const markdownStyle = useMemo(() => StyleSheet.create({
         body: {
             color: theme.colors.onSurface,
             fontSize: 16,
@@ -412,7 +414,7 @@ export default function Editor() {
             marginLeft: 0,
             paddingLeft: 16,
             paddingVertical: 8,
-            backgroundColor: theme.colors.surfaceVariant + '40', // 25% opacity
+            backgroundColor: theme.colors.surfaceVariant + '40',
             color: theme.colors.onSurfaceVariant,
             fontStyle: 'italic',
             borderRadius: 4,
@@ -451,7 +453,13 @@ export default function Editor() {
         list_item: {
             marginVertical: 4,
         },
-    });
+    }), [theme]);
+
+    // Stabilize headers for image rendering to prevent refetches
+    const imageHeaders = useMemo(() => githubToken ? {
+        'Authorization': `Bearer ${githubToken}`,
+        'Accept': 'application/vnd.github.v3.raw',
+    } : undefined, [githubToken]);
 
     // Custom Render Rules to fix Image "key" crash and handle Auth
     const renderRules = useMemo(() => ({
@@ -465,17 +473,11 @@ export default function Editor() {
                 uri = `https://api.github.com/repos/${repoPath}/contents/${targetPath}`;
             }
 
-            const headers = githubToken ? {
-                'Authorization': `Bearer ${githubToken}`,
-                'Accept': 'application/vnd.github.v3.raw',
-                'Cache-Control': 'no-cache'
-            } : undefined;
-
             return (
                 <MemoizedMarkdownImage
                     key={node.key}
                     uri={uri}
-                    headers={headers}
+                    headers={imageHeaders}
                     alt={alt}
                     theme={theme}
                 />
@@ -484,7 +486,7 @@ export default function Editor() {
         softbreak: (node: any, children: any, parent: any, styles: any) => {
             return <PaperText key={node.key}> </PaperText>;
         },
-    }), [repoPath, repoConfig, githubToken, theme]);
+    }), [repoPath, repoConfig, imageHeaders, theme]);
 
 
     const fetchFile = async () => {
@@ -502,8 +504,17 @@ export default function Editor() {
 
         if (isNew) {
             const draft = await AsyncStorage.getItem(AUTOSAVE_KEY);
-            if (draft) setContent(draft);
-            else setContent('---\ntitle: ' + title + '\ndate: ' + new Date().toISOString().split('T')[0] + '\ndraft: true\n---\n\n');
+            if (draft) {
+                setContent(draft);
+            } else {
+                let template = repoConfig?.postTemplate || "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n";
+                const date = new Date().toISOString().split('T')[0];
+                const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+                template = template.replace(/{{title}}/g, title)
+                    .replace(/{{date}}/g, date)
+                    .replace(/{{time}}/g, time);
+                setContent(template);
+            }
             setIsLoading(false);
             return;
         }
@@ -742,7 +753,11 @@ export default function Editor() {
             <View style={styles.tabContainer}>
                 <SegmentedButtons
                     value={mode}
-                    onValueChange={setMode}
+                    onValueChange={(val: string) => {
+                        if (val !== 'edit') Keyboard.dismiss();
+                        if (val === 'preview') setPreviewContent(content);
+                        setMode(val);
+                    }}
                     buttons={[
                         { value: 'edit', label: 'Edit', icon: 'pencil' },
                         { value: 'preview', label: 'Preview', icon: 'eye' },
@@ -754,18 +769,20 @@ export default function Editor() {
 
             <View style={styles.editorContainer}>
                 <SlidingTabContainer selectedIndex={editorSelectedIndex}>
-                    {/* Edit Tab */}
                     <View style={{ flex: 1 }}>
-                        <NativeTextInput
-                            ref={inputRef}
-                            style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.background }]}
-                            multiline
-                            value={content}
-                            onChangeText={setContent}
-                            onSelectionChange={e => setSelection(e.nativeEvent.selection)}
-                            placeholder="Write something beautiful..."
-                            textAlignVertical="top"
-                        />
+                        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+                            <NativeTextInput
+                                ref={inputRef}
+                                style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.background }]}
+                                multiline
+                                value={content}
+                                onChangeText={setContent}
+                                onSelectionChange={e => setSelection(e.nativeEvent.selection)}
+                                placeholder="Write something beautiful..."
+                                textAlignVertical="top"
+                                scrollEnabled={false} // Le t the parent ScrollView handle scrolling
+                            />
+                        </ScrollView>
                         {/* Floating Action Button for adding images in Edit mode */}
                         <IconButton
                             icon="image-plus"
@@ -778,9 +795,9 @@ export default function Editor() {
 
                     {/* Preview Tab */}
                     <View style={{ flex: 1 }}>
-                        <ScrollView style={styles.previewContainer}>
+                        <ScrollView style={styles.previewContainer} contentContainerStyle={{ paddingBottom: 100 }}>
                             <Markdown style={markdownStyle} rules={renderRules}>
-                                {content}
+                                {previewContent}
                             </Markdown>
                         </ScrollView>
                     </View>
@@ -831,7 +848,7 @@ const styles = StyleSheet.create({
     appbarTitle: { fontSize: 18, fontWeight: 'bold', opacity: 0.8 },
     tabContainer: { paddingBottom: 8 },
     editorContainer: { flex: 1 },
-    input: { flex: 1, padding: 24, fontSize: 18, lineHeight: 28 },
+    input: { minHeight: '100%', padding: 24, fontSize: 18, lineHeight: 28 },
     previewContainer: { flex: 1, padding: 24 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     assetsGrid: { padding: 4 },

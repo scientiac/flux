@@ -434,7 +434,8 @@ export default function Files() {
 
         // Use custom template or fallback
         let template = repoConfig.postTemplate || "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n";
-        template = template.replace(/{{title}}/g, title).replace(/{{date}}/g, date);
+        const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
+        template = template.replace(/{{title}}/g, title).replace(/{{date}}/g, date).replace(/{{time}}/g, time);
 
         await saveDraft({
             id,
