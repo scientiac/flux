@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { Appbar, Avatar, Button, List, Searchbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 import { useGitHubAuth } from '../hooks/use-github-auth';
 
@@ -20,6 +20,7 @@ export default function Index() {
     const [isFetchingRepos, setIsFetchingRepos] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isBooting, setIsBooting] = useState(true);
+    const [logoutDialogVisible, setLogoutDialogVisible] = useState(false);
 
     useEffect(() => {
         if (!isConfigLoading) {
@@ -145,7 +146,7 @@ export default function Index() {
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
                 <Appbar.Content title="Repositories" titleStyle={{ fontWeight: 'bold' }} />
-                <Appbar.Action icon="logout" onPress={logout} />
+                <Appbar.Action icon="logout" onPress={() => setLogoutDialogVisible(true)} />
             </Appbar.Header>
 
             <View style={styles.content}>
@@ -207,7 +208,21 @@ export default function Index() {
                     }
                 />
             </View>
-        </View>
+
+
+            <Portal>
+                <Dialog visible={logoutDialogVisible} onDismiss={() => setLogoutDialogVisible(false)} style={{ borderRadius: 28 }}>
+                    <Dialog.Title>Logout</Dialog.Title>
+                    <Dialog.Content>
+                        <Paragraph>Are you sure you want to log out?</Paragraph>
+                    </Dialog.Content>
+                    <Dialog.Actions>
+                        <Button onPress={() => setLogoutDialogVisible(false)}>Cancel</Button>
+                        <Button onPress={() => { setLogoutDialogVisible(false); logout(); }}>Logout</Button>
+                    </Dialog.Actions>
+                </Dialog>
+            </Portal>
+        </View >
     );
 }
 
