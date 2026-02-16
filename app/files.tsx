@@ -9,11 +9,33 @@ import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import { Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
 const ASSET_ITEM_SIZE = (width - 48) / COLUMN_COUNT;
+
+// Inline sliding tab container
+const SlidingTabContainer = ({ children, selectedIndex }: { children: React.ReactNode[]; selectedIndex: number }) => {
+    const translateX = useSharedValue(0);
+    useEffect(() => {
+        translateX.value = withTiming(-selectedIndex * width, {
+            duration: 300,
+            easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
+    }, [selectedIndex]);
+    const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
+    return (
+        <View style={{ flex: 1, overflow: 'hidden' }}>
+            <Animated.View style={[{ flexDirection: 'row', flex: 1 }, animatedStyle, { width: width * React.Children.count(children) }]}>
+                {React.Children.map(children, (child, i) => (
+                    <View key={i} style={{ width, flex: 1 }}>{child}</View>
+                ))}
+            </Animated.View>
+        </View>
+    );
+};
 
 // Helper to format relative dates like GitHub/Gmail
 const formatRelativeDate = (dateString: string) => {
@@ -232,6 +254,7 @@ export default function Files() {
     const router = useRouter();
 
     const [mode, setMode] = useState<'posts' | 'drafts' | 'assets'>('posts');
+    const selectedIndex = ['posts', 'drafts', 'assets'].indexOf(mode);
 
     const repoPath = config.repo;
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
@@ -405,8 +428,14 @@ export default function Files() {
     };
 
     const handleCreateDraft = async (title: string) => {
+        if (!repoConfig) return;
         const id = Date.now().toString();
-        const template = `---\ntitle: ${title}\ndate: ${new Date().toISOString().split('T')[0]}\ndraft: true\n---\n\n`;
+        const date = new Date().toISOString().split('T')[0];
+
+        // Use custom template or fallback
+        let template = repoConfig.postTemplate || "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n";
+        template = template.replace(/{{title}}/g, title).replace(/{{date}}/g, date);
+
         await saveDraft({
             id,
             title: title || 'New Draft',
@@ -635,70 +664,75 @@ export default function Files() {
             </View>
 
             <View style={styles.content}>
-                {mode === 'posts' && (
-                    <FlatList
-                        data={filteredFiles}
-                        keyExtractor={(item) => item.sha}
-                        contentContainerStyle={styles.draftList}
-                        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchFiles(true)} />}
-                        renderItem={({ item }) => (
-                            <FileItem
-                                item={item}
-                                onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
-                                onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
-                                onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
-                            />
-                        )}
-                        ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View>}
-                    />
-                )}
+                <SlidingTabContainer selectedIndex={selectedIndex}>
+                    {/* Posts Tab */}
+                    <View style={{ flex: 1 }}>
+                        <FlatList
+                            data={filteredFiles}
+                            keyExtractor={(item) => item.sha}
+                            contentContainerStyle={styles.draftList}
+                            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchFiles(true)} />}
+                            renderItem={({ item }) => (
+                                <FileItem
+                                    item={item}
+                                    onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
+                                    onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
+                                    onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
+                                />
+                            )}
+                            ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View>}
+                        />
+                    </View>
 
-                {mode === 'drafts' && (
-                    <FlatList
-                        data={filteredDrafts}
-                        keyExtractor={(item) => item.id}
-                        numColumns={1}
-                        contentContainerStyle={styles.draftList}
-                        renderItem={({ item }) => (
-                            <DraftItem
-                                item={item}
-                                onPress={() => router.push(`/editor/draft_${item.id}`)}
-                                onDelete={() => {
-                                    setSelectedDraft(item);
-                                    setIsDeleteDraftVisible(true);
-                                }}
-                                onPublish={() => {
-                                    setSelectedDraft(item);
-                                    setIsPublishDialogVisible(true);
-                                }}
-                                onRename={() => {
-                                    setSelectedDraft(item);
-                                    setIsRenameDraftVisible(true);
-                                }}
-                            />
-                        )}
-                        ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="pencil-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No drafts yet.</Text></View>}
-                    />
-                )}
+                    {/* Drafts Tab */}
+                    <View style={{ flex: 1 }}>
+                        <FlatList
+                            data={filteredDrafts}
+                            keyExtractor={(item) => item.id}
+                            numColumns={1}
+                            contentContainerStyle={styles.draftList}
+                            renderItem={({ item }) => (
+                                <DraftItem
+                                    item={item}
+                                    onPress={() => router.push(`/editor/draft_${item.id}`)}
+                                    onDelete={() => {
+                                        setSelectedDraft(item);
+                                        setIsDeleteDraftVisible(true);
+                                    }}
+                                    onPublish={() => {
+                                        setSelectedDraft(item);
+                                        setIsPublishDialogVisible(true);
+                                    }}
+                                    onRename={() => {
+                                        setSelectedDraft(item);
+                                        setIsRenameDraftVisible(true);
+                                    }}
+                                />
+                            )}
+                            ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="pencil-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No drafts yet.</Text></View>}
+                        />
+                    </View>
 
-                {mode === 'assets' && (
-                    <FlatList
-                        data={filteredAssets}
-                        keyExtractor={(item) => item.path}
-                        numColumns={COLUMN_COUNT}
-                        contentContainerStyle={styles.assetGrid}
-                        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchAssets(true)} />}
-                        renderItem={({ item }) => (
-                            <AssetItem
-                                item={item}
-                                headers={assetHeaders}
-                                onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
-                                onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
-                            />
-                        )}
-                        ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>}
-                    />
-                )}
+                    {/* Assets Tab */}
+                    <View style={{ flex: 1 }}>
+                        <FlatList
+                            data={filteredAssets}
+                            keyExtractor={(item) => item.path}
+                            numColumns={COLUMN_COUNT}
+                            contentContainerStyle={styles.assetGrid}
+                            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchAssets(true)} />}
+                            renderItem={({ item }) => (
+                                <AssetItem
+                                    item={item}
+                                    headers={assetHeaders}
+                                    onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
+                                    onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
+                                />
+                            )}
+                            ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>}
+                        />
+                    </View>
+                </SlidingTabContainer>
             </View>
 
             <Portal>
@@ -794,7 +828,7 @@ export default function Files() {
                 style={styles.fab}
                 onPress={handleAction}
             />
-        </View>
+        </View >
     );
 }
 

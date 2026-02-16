@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useMemo, useRef, useState 
 interface RepoConfig {
     contentDir: string;
     assetsDir: string;
+    postTemplate: string;
 }
 
 interface AppConfig {
@@ -50,6 +51,7 @@ const DRAFTS_KEY = 'flux_local_drafts';
 const DEFAULT_REPO_CONFIG: RepoConfig = {
     contentDir: 'content/posts',
     assetsDir: 'static/assets',
+    postTemplate: "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n"
 };
 
 const DEFAULT_CONFIG: AppConfig = {

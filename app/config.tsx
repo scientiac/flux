@@ -16,6 +16,7 @@ export default function Config() {
 
     const [contentDir, setContentDir] = useState(currentRepoConfig?.contentDir || 'content/posts');
     const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'static/assets');
+    const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n");
     const [isValidating, setIsValidating] = useState(false);
 
     // Snackbar
@@ -26,6 +27,7 @@ export default function Config() {
         if (currentRepoConfig) {
             setContentDir(currentRepoConfig.contentDir);
             setAssetsDir(currentRepoConfig.assetsDir);
+            if (currentRepoConfig.postTemplate) setPostTemplate(currentRepoConfig.postTemplate);
         }
     }, [currentRepoConfig]);
 
@@ -64,7 +66,8 @@ export default function Config() {
 
             await updateRepoConfig(repoPath, {
                 contentDir: cleanContentDir,
-                assetsDir: cleanAssetsDir
+                assetsDir: cleanAssetsDir,
+                postTemplate: postTemplate
             });
             setSnackbarMsg('Settings saved successfully');
             setSnackbarVisible(true);
@@ -118,6 +121,23 @@ export default function Config() {
                         left={<TextInput.Icon icon="image-outline" />}
                     />
                     <HelperText type="info">Where images and media will be uploaded.</HelperText>
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <TextInput
+                        label="Post Frontmatter Template"
+                        value={postTemplate}
+                        onChangeText={setPostTemplate}
+                        mode="flat"
+                        multiline
+                        numberOfLines={10}
+                        placeholder="---\ntitle: {{title}}\n---"
+                        style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant, minHeight: 180, paddingVertical: 8 }]}
+                        selectionColor={theme.colors.primary}
+                        activeUnderlineColor={theme.colors.primary}
+                        left={<TextInput.Icon icon="file-document-edit-outline" style={{ marginTop: 8 }} />}
+                    />
+                    <HelperText type="info">Defines the frontmatter for new posts. Use {'{{title}}'} and {'{{date}}'} as placeholders.</HelperText>
                 </View>
 
                 <Button

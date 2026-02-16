@@ -10,11 +10,34 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ActivityIndicator, Dimensions, FlatList, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
 import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, TextInput, useTheme } from 'react-native-paper';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../../context/AppContext';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
 const ITEM_SIZE = (width - 32) / COLUMN_COUNT; // Slightly smaller since it's within a tab
+
+// Inline sliding tab container
+const SlidingTabContainer = ({ children, selectedIndex }: { children: React.ReactNode[]; selectedIndex: number }) => {
+    const translateX = useSharedValue(0);
+    useEffect(() => {
+        translateX.value = withTiming(-selectedIndex * width, {
+            duration: 300,
+            easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        });
+    }, [selectedIndex]);
+    const animatedStyle = useAnimatedStyle(() => ({ transform: [{ translateX: translateX.value }] }));
+    return (
+        <View style={{ flex: 1, overflow: 'hidden' }}>
+            <Animated.View style={[{ flexDirection: 'row', flex: 1 }, animatedStyle, { width: width * React.Children.count(children) }]}>
+                {React.Children.map(children, (child, i) => (
+                    <View key={i} style={{ width, flex: 1 }}>{child}</View>
+                ))}
+            </Animated.View>
+        </View>
+    );
+};
+
 
 // Sub-component for Image Naming Dialog
 const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string }) => {
@@ -323,6 +346,7 @@ export default function Editor() {
 
     // Mode: 'edit' | 'preview' | 'assets'
     const [mode, setMode] = useState('edit');
+    const editorSelectedIndex = ['edit', 'preview', 'assets'].indexOf(mode);
 
     // Asset Staging
     const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({});
@@ -729,14 +753,8 @@ export default function Editor() {
             </View>
 
             <View style={styles.editorContainer}>
-                {mode === 'preview' && (
-                    <ScrollView style={styles.previewContainer}>
-                        <Markdown style={markdownStyle} rules={renderRules}>
-                            {content}
-                        </Markdown>
-                    </ScrollView>
-                )}
-                {mode === 'edit' && (
+                <SlidingTabContainer selectedIndex={editorSelectedIndex}>
+                    {/* Edit Tab */}
                     <View style={{ flex: 1 }}>
                         <NativeTextInput
                             ref={inputRef}
@@ -747,7 +765,6 @@ export default function Editor() {
                             onSelectionChange={e => setSelection(e.nativeEvent.selection)}
                             placeholder="Write something beautiful..."
                             textAlignVertical="top"
-                        // autoFocus
                         />
                         {/* Floating Action Button for adding images in Edit mode */}
                         <IconButton
@@ -758,14 +775,25 @@ export default function Editor() {
                             onPress={pickImage}
                         />
                     </View>
-                )}
-                {mode === 'assets' && (
-                    <AssetsManager
-                        repoPath={repoPath}
-                        assetsDir={repoConfig?.assetsDir || 'assets'}
-                        onInsert={handleInsertAsset}
-                    />
-                )}
+
+                    {/* Preview Tab */}
+                    <View style={{ flex: 1 }}>
+                        <ScrollView style={styles.previewContainer}>
+                            <Markdown style={markdownStyle} rules={renderRules}>
+                                {content}
+                            </Markdown>
+                        </ScrollView>
+                    </View>
+
+                    {/* Assets Tab */}
+                    <View style={{ flex: 1 }}>
+                        <AssetsManager
+                            repoPath={repoPath}
+                            assetsDir={repoConfig?.assetsDir || 'assets'}
+                            onInsert={handleInsertAsset}
+                        />
+                    </View>
+                </SlidingTabContainer>
             </View>
 
             <Portal>
