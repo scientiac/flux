@@ -12,47 +12,55 @@ export const unstable_settings = {
   anchor: 'index',
 };
 
+import * as SystemUI from 'expo-system-ui';
+import { useEffect } from 'react';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const { theme } = useMaterial3Theme();
 
   const { NavigationTheme, PaperTheme } = useMemo(() => {
     const isDark = colorScheme === 'dark';
-
-    // Adapt navigation theme to Material 3
-    const { LightTheme: NavLightTheme, DarkTheme: NavDarkTheme } = adaptNavigationTheme({
+    const paperTheme = isDark ? { ...MD3DarkTheme, colors: theme.dark } : { ...MD3LightTheme, colors: theme.light };
+    const { LightTheme, DarkTheme: NavDarkTheme } = adaptNavigationTheme({
       reactNavigationLight: DefaultTheme,
       reactNavigationDark: DarkTheme,
+      materialLight: MD3LightTheme,
+      materialDark: MD3DarkTheme,
     });
 
-    const paperTheme = isDark
-      ? { ...MD3DarkTheme, colors: theme.dark }
-      : { ...MD3LightTheme, colors: theme.light };
-
-    const navTheme = isDark ? NavDarkTheme : NavLightTheme;
+    const combinedTheme = isDark ? NavDarkTheme : LightTheme;
 
     return {
       PaperTheme: paperTheme,
       NavigationTheme: {
-        ...navTheme,
+        ...combinedTheme,
         colors: {
-          ...navTheme.colors,
+          ...combinedTheme.colors,
           ...paperTheme.colors,
+          background: paperTheme.colors.background,
         }
       }
     };
   }, [colorScheme, theme]);
 
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(NavigationTheme.colors.background);
+  }, [NavigationTheme.colors.background]);
+
   return (
-    <AppProvider>
-      <PaperProvider theme={PaperTheme}>
-        <ThemeProvider value={PaperTheme.dark ? DarkTheme : DefaultTheme}>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="index" />
-          </Stack>
-          <StatusBar style="auto" />
-        </ThemeProvider>
-      </PaperProvider>
-    </AppProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AppProvider>
+        <PaperProvider theme={PaperTheme}>
+          <ThemeProvider value={NavigationTheme}>
+            <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+              <Stack.Screen name="index" />
+            </Stack>
+            <StatusBar style="auto" />
+          </ThemeProvider>
+        </PaperProvider>
+      </AppProvider>
+    </GestureHandlerRootView>
   );
 }

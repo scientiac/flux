@@ -1,56 +1,461 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, TextInput as RNTextInput, ScrollView, StyleSheet, View } from 'react-native';
-import Markdown from 'react-native-markdown-display';
-import { Appbar, Button, IconButton, Modal, Portal, Snackbar, Text, TextInput, ToggleButton, useTheme } from 'react-native-paper';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Dimensions, FlatList, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { default as Markdown } from 'react-native-markdown-display';
+import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../../context/AppContext';
 
+const { width } = Dimensions.get('window');
+const COLUMN_COUNT = 2;
+const ITEM_SIZE = (width - 32) / COLUMN_COUNT; // Slightly smaller since it's within a tab
+
+// Sub-component for Image Naming Dialog
+const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string }) => {
+    const [localValue, setLocalValue] = useState(initialValue);
+    useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
+
+    return (
+        <Dialog visible={visible} onDismiss={onDismiss}>
+            <Dialog.Title>Name your image</Dialog.Title>
+            <Dialog.Content>
+                <TextInput
+                    label="Filename"
+                    value={localValue}
+                    onChangeText={setLocalValue}
+                    mode="outlined"
+                    autoFocus
+                />
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
+                <Button onPress={() => onConfirm(localValue)}>Add to Post</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
+// Sub-component for Commit Message Dialog
+const CommitDialog = ({ visible, onDismiss, onPublish, initialMsg }: { visible: boolean, onDismiss: () => void, onPublish: (msg: string) => void, initialMsg: string }) => {
+    const [localMsg, setLocalMsg] = useState(initialMsg);
+    useEffect(() => { if (visible) setLocalMsg(initialMsg); }, [visible, initialMsg]);
+
+    return (
+        <Dialog visible={visible} onDismiss={onDismiss}>
+            <Dialog.Title>Publish to GitHub</Dialog.Title>
+            <Dialog.Content>
+                <TextInput
+                    label="Commit Message"
+                    value={localMsg}
+                    onChangeText={setLocalMsg}
+                    mode="outlined"
+                    style={{ marginBottom: 8 }}
+                />
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
+                <Button mode="contained" onPress={() => onPublish(localMsg)}>Push Changes</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
+// Sub-component for Assets Manager
+const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | null, assetsDir: string, onInsert: (filename: string) => void }) => {
+    const { config, assetCache, setRepoAssetCache } = useAppContext();
+    const [isLoading, setIsLoading] = useState(false);
+    const [githubToken, setGithubToken] = useState<string | null>(null);
+    const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
+    const [renameVisible, setRenameVisible] = useState(false);
+    const [selectedAsset, setSelectedAsset] = useState<any>(null);
+    const theme = useTheme();
+
+    const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
+    const assets = repoPath ? (assetCache[repoPath] || []) : [];
+
+    useEffect(() => {
+        SecureStore.getItemAsync('github_access_token').then(setGithubToken);
+    }, []);
+
+    const fetchAssets = useCallback(async (silent = false) => {
+        if (!repoPath || !assetsDir) return;
+        if (!silent && assets.length === 0) setIsLoading(true);
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            const cleanAssetsDir = assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
+            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${cleanAssetsDir}`, {
+                headers: { Authorization: `token ${token}` }
+            });
+            const imageFiles = response.data.filter((f: any) =>
+                f.type === 'file' && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
+            );
+            await setRepoAssetCache(repoPath, imageFiles);
+        } catch (e) {
+            console.error('[Assets] Fetch failed', e);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [repoPath, assetsDir, setRepoAssetCache]);
+
+    useEffect(() => {
+        if (repoPath && assetsDir) fetchAssets();
+    }, [repoPath, assetsDir]);
+
+    const handleDelete = async () => {
+        if (!repoPath || !selectedAsset) return;
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+                headers: { Authorization: `token ${token}` },
+                data: {
+                    message: `Delete asset ${selectedAsset.name}`,
+                    sha: selectedAsset.sha
+                }
+            });
+            const updatedAssets = assets.filter(a => a.path !== selectedAsset.path);
+            await setRepoAssetCache(repoPath, updatedAssets);
+        } catch (e: any) {
+            console.error('[Assets] Delete failed', e.response?.data || e.message);
+        } finally {
+            setDeleteConfirmVisible(false);
+            setSelectedAsset(null);
+        }
+    };
+
+    const handleRename = async (newName: string) => {
+        if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
+        const ext = selectedAsset.name.split('.').pop();
+        const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
+        const newPath = `${assetsDir}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+
+        setIsLoading(true);
+        setRenameVisible(false);
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            const contentResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+                headers: { Authorization: `token ${token}` }
+            });
+            await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
+                message: `Rename ${selectedAsset.name} to ${cleanName}`,
+                content: contentResponse.data.content,
+            }, {
+                headers: { Authorization: `token ${token}` }
+            });
+            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+                headers: { Authorization: `token ${token}` },
+                data: {
+                    message: `Cleanup after rename ${selectedAsset.name} to ${cleanName}`,
+                    sha: selectedAsset.sha
+                }
+            });
+            const updatedAssets = assets.map(a => a.path === selectedAsset.path ? { ...a, name: cleanName, path: newPath } : a);
+            await setRepoAssetCache(repoPath, updatedAssets);
+        } catch (e: any) {
+            console.error('[Assets] Rename failed', e.response?.data || e.message);
+        } finally {
+            setIsLoading(false);
+            setSelectedAsset(null);
+        }
+    };
+
+    if (isLoading && assets.length === 0) {
+        return <View style={styles.center}><ActivityIndicator size="large" /></View>;
+    }
+
+    if (assets.length === 0) {
+        return (
+            <View style={styles.center}>
+                <PaperText style={{ color: theme.colors.onSurfaceVariant }}>No images found in {assetsDir}</PaperText>
+                <Button mode="text" onPress={() => fetchAssets()} icon="refresh">Refresh</Button>
+            </View>
+        );
+    }
+
+    const headers = githubToken ? { Authorization: `token ${githubToken}` } : undefined;
+
+    return (
+        <View style={{ flex: 1 }}>
+            <FlatList
+                data={assets}
+                keyExtractor={(item) => item.path}
+                numColumns={COLUMN_COUNT}
+                contentContainerStyle={styles.assetsGrid}
+                refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchAssets()} />}
+                renderItem={({ item }) => (
+                    <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant }]}>
+                        <TouchableOpacity onPress={() => onInsert(item.name)} style={styles.assetThumbContainer}>
+                            <Image
+                                source={{ uri: item.download_url, headers }}
+                                style={styles.assetImage}
+                                contentFit="cover"
+                                cachePolicy="disk"
+                            />
+                            <View style={styles.assetOverlay}>
+                                <IconButton
+                                    icon="pencil"
+                                    iconColor="white"
+                                    size={20}
+                                    onPress={() => {
+                                        setSelectedAsset(item);
+                                        setRenameVisible(true);
+                                    }}
+                                    style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
+                                />
+                                <IconButton
+                                    icon="delete"
+                                    iconColor={theme.colors.error}
+                                    size={20}
+                                    onPress={() => {
+                                        setSelectedAsset(item);
+                                        setDeleteConfirmVisible(true);
+                                    }}
+                                    style={{ backgroundColor: 'rgba(255,255,255,0.8)', margin: 2 }}
+                                />
+                            </View>
+                        </TouchableOpacity>
+                        <View style={{ backgroundColor: theme.colors.surface, padding: 4 }}>
+                            <PaperText variant="bodySmall" numberOfLines={1} style={styles.assetCardName}>{item.name}</PaperText>
+                        </View>
+                    </View>
+                )}
+            />
+
+            <Portal>
+                <Dialog visible={renameVisible} onDismiss={() => setRenameVisible(false)}>
+                    <Dialog.Title>Rename Asset</Dialog.Title>
+                    <Dialog.Content>
+                        <TextInput
+                            label="New Name"
+                            defaultValue={selectedAsset?.name.split('.')[0]}
+                            onSubmitEditing={(e) => handleRename(e.nativeEvent.text)}
+                            mode="outlined"
+                            autoFocus
+                        />
+                    </Dialog.Content>
+                    <Dialog.Actions>
+                        <Button onPress={() => setRenameVisible(false)}>Cancel</Button>
+                    </Dialog.Actions>
+                </Dialog>
+
+                <Dialog visible={deleteConfirmVisible} onDismiss={() => setDeleteConfirmVisible(false)} style={{ borderRadius: 28 }}>
+                    <Dialog.Title>Delete Asset?</Dialog.Title>
+                    <Dialog.Content>
+                        <PaperText variant="bodyMedium">Are you sure you want to delete '{selectedAsset?.name}'? This cannot be undone and may break existing posts.</PaperText>
+                    </Dialog.Content>
+                    <Dialog.Actions>
+                        <Button onPress={() => setDeleteConfirmVisible(false)}>Cancel</Button>
+                        <Button onPress={handleDelete} textColor={theme.colors.error}>Delete</Button>
+                    </Dialog.Actions>
+                </Dialog>
+            </Portal>
+        </View>
+    );
+};
+
+
 export default function Editor() {
-    const { path } = useLocalSearchParams();
-    const isNew = path === 'new';
-    const decodedPath = isNew ? '' : decodeURIComponent(path as string);
+    const { path, new: isNewParam } = useLocalSearchParams();
+    const isNew = isNewParam === 'true';
+    const decodedPath = decodeURIComponent(path as string);
     const { config } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
 
+    const repoPath = config.repo;
+    const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
+
     const [content, setContent] = useState('');
-    const [title, setTitle] = useState(isNew ? 'New Post' : decodedPath.split('/').pop()?.replace('.md', '') || '');
+    const [title, setTitle] = useState(decodedPath.split('/').pop()?.replace('.md', '') || '');
     const [isLoading, setIsLoading] = useState(!isNew);
     const [isSaving, setIsSaving] = useState(false);
-    const [mode, setMode] = useState<'edit' | 'preview'>('edit');
     const [sha, setSha] = useState<string | null>(null);
     const [selection, setSelection] = useState({ start: 0, end: 0 });
-    const [pendingImages, setPendingImages] = useState<{ localUri: string, filename: string }[]>([]);
-    const [snackbarVisible, setSnackbarVisible] = useState(false);
-    const [snackbarMsg, setSnackbarMsg] = useState('');
-    const [commitMsg, setCommitMsg] = useState(isNew ? `Create ${title}` : `Update ${title}`);
+
+    // Mode: 'edit' | 'preview' | 'assets'
+    const [mode, setMode] = useState('edit');
+
+    // Asset Staging
+    const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({});
+    const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
+    const [isImageNameVisible, setIsImageNameVisible] = useState(false);
+
+    // Commit UI states
     const [isCommitModalVisible, setIsCommitModalVisible] = useState(false);
 
-    const inputRef = useRef<RNTextInput>(null);
-    const AUTOSAVE_KEY = `flux_draft_${isNew ? 'new' : decodedPath}`;
+    const [snackbarVisible, setSnackbarVisible] = useState(false);
+    const [snackbarMsg, setSnackbarMsg] = useState('');
+    const [githubToken, setGithubToken] = useState<string | null>(null);
+
+    const inputRef = useRef<NativeTextInput>(null);
+    const AUTOSAVE_KEY = `flux_draft_${decodedPath}`;
+
+    // Load Token for Image Rendering
+    useEffect(() => {
+        SecureStore.getItemAsync('github_access_token').then(setGithubToken);
+    }, []);
+
+    const markdownStyle = StyleSheet.create({
+        body: {
+            color: theme.colors.onSurface,
+            fontSize: 16,
+            lineHeight: 26,
+            fontFamily: Platform.select({ ios: 'System', android: 'sans-serif' }),
+        },
+        heading1: {
+            fontSize: 34,
+            fontWeight: '900',
+            color: theme.colors.primary,
+            marginBottom: 20,
+            marginTop: 30,
+            lineHeight: 42,
+            letterSpacing: -0.5,
+        },
+        heading2: {
+            fontSize: 28,
+            fontWeight: '800',
+            color: theme.colors.primary,
+            marginBottom: 16,
+            marginTop: 24,
+            lineHeight: 36,
+            letterSpacing: -0.3,
+        },
+        heading3: {
+            fontSize: 22,
+            fontWeight: '700',
+            color: theme.colors.primary,
+            marginBottom: 12,
+            marginTop: 20,
+            lineHeight: 30,
+        },
+        link: {
+            color: theme.colors.primary,
+            textDecorationLine: 'underline',
+            fontWeight: '600',
+        },
+        blockquote: {
+            borderColor: theme.colors.primary,
+            borderLeftWidth: 6,
+            marginLeft: 0,
+            paddingLeft: 16,
+            paddingVertical: 8,
+            backgroundColor: theme.colors.surfaceVariant + '40', // 25% opacity
+            color: theme.colors.onSurfaceVariant,
+            fontStyle: 'italic',
+            borderRadius: 4,
+        },
+        code_block: {
+            fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
+            backgroundColor: theme.colors.surfaceVariant,
+            color: theme.colors.onSurfaceVariant,
+            padding: 16,
+            borderRadius: 12,
+            fontSize: 14,
+            marginVertical: 12,
+            borderWidth: 1,
+            borderColor: theme.colors.outlineVariant,
+        },
+        code_inline: {
+            fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
+            backgroundColor: theme.colors.surfaceVariant,
+            color: theme.colors.primary,
+            borderRadius: 4,
+            paddingHorizontal: 4,
+            fontSize: 14,
+        },
+        strong: {
+            fontWeight: 'bold',
+            color: theme.colors.onSurface,
+        },
+        em: {
+            fontStyle: 'italic',
+        },
+        hr: {
+            backgroundColor: theme.colors.outlineVariant,
+            height: 1,
+            marginVertical: 24,
+        },
+        list_item: {
+            marginVertical: 4,
+        },
+    });
+
+    // Custom Render Rules to fix Image "key" crash and handle Auth
+    const renderRules = useMemo(() => ({
+        image: (node: any, children: any, parent: any, styles: any) => {
+            const { src, alt } = node.attributes;
+            let uri = src;
+
+            // Handle relative paths for repo assets
+            if (repoPath && repoConfig && !src.startsWith('http')) {
+                const cleanSrc = src.replace(/^\/+/, ''); // Remove leading slash
+                // Check if it matches asset dir or just filename
+                // If it's just a filename, assume it's in assetsDir
+                const targetPath = cleanSrc.includes('/') ? cleanSrc : `${repoConfig.assetsDir}/${cleanSrc}`.replace(/^\/+/, '');
+
+                // Construct raw content URL logic
+                // But typically for private repos we need API or raw.githubusercontent with token (which is tricky)
+                // Better to use API to get download_url, OR use raw.githubusercontent with header?
+                // Simple approach: Use matching logic from pending assets or just raw URL if public.
+                // For authenticated private images, we often can't use simple <Image> unless we proxy or get signed URL.
+                // HOWEVER, React Native `Image` allows headers. Expo Image allows headers.
+
+                // Construct API URL which redirects to raw
+                uri = `https://api.github.com/repos/${repoPath}/contents/${targetPath}`;
+            }
+
+            // We need to fetch the download_url if using API content endpoint, 
+            // OR we can try to pass the Authorization header to `expo-image`
+            // But `contents` endpoint returns JSON, not image data directly unless using `application/vnd.github.v3.raw` media type.
+
+            const headers = githubToken ? { Authorization: `token ${githubToken}`, Accept: 'application/vnd.github.v3.raw' } : undefined;
+
+            return (
+                <View key={node.key} style={{ marginVertical: 16, alignItems: 'center', width: '100%' }}>
+                    <Image
+                        source={{ uri, headers }}
+                        style={{
+                            width: Dimensions.get('window').width - 48,
+                            height: 250,
+                            borderRadius: 16,
+                            backgroundColor: theme.colors.surfaceVariant,
+                            borderWidth: 1,
+                            borderColor: theme.colors.outlineVariant
+                        }}
+                        contentFit="contain"
+                        transition={300}
+                    />
+                    {alt ? <PaperText style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, marginTop: 8, fontStyle: 'italic' }}>{alt}</PaperText> : null}
+                </View>
+            );
+        },
+        softbreak: (node: any, children: any, parent: any, styles: any) => {
+            return <PaperText key={node.key}> </PaperText>;
+        },
+    }), [repoPath, repoConfig, githubToken, theme]);
+
 
     const fetchFile = async () => {
+        if (!repoPath) return;
+
         if (isNew) {
             const draft = await AsyncStorage.getItem(AUTOSAVE_KEY);
             if (draft) setContent(draft);
-            else setContent('---\ntitle: New Post\ndate: ' + new Date().toISOString().split('T')[0] + '\ndraft: true\n---\n\nStart writing here...');
+            else setContent('---\ntitle: ' + title + '\ndate: ' + new Date().toISOString().split('T')[0] + '\ndraft: true\n---\n\n');
             return;
         }
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const response = await axios.get(`https://api.github.com/repos/${config.repo}/contents/${decodedPath}`, {
+            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${decodedPath}`, {
                 headers: { Authorization: `token ${token}` }
             });
             const rawContent = Buffer.from(response.data.content, 'base64').toString('utf8');
-
-            // Check for local draft first
             const draft = await AsyncStorage.getItem(AUTOSAVE_KEY);
             setContent(draft || rawContent);
             setSha(response.data.sha);
@@ -65,7 +470,6 @@ export default function Editor() {
         fetchFile();
     }, [path]);
 
-    // Autosave effect
     useEffect(() => {
         if (!content || isLoading) return;
         const timer = setTimeout(async () => {
@@ -74,73 +478,93 @@ export default function Editor() {
         return () => clearTimeout(timer);
     }, [content]);
 
-    const handleSave = async () => {
+    const handlePublish = async (msg: string) => {
+        if (!repoPath || !repoConfig) return;
+
         setIsCommitModalVisible(false);
         setIsSaving(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
             if (!token) throw new Error('Not authenticated');
 
-            // 1. Upload pending images
-            for (const img of pendingImages) {
-                const response = await fetch(img.localUri);
+            const cleanPostPath = decodedPath.replace(/^\/+/, '').replace(/\/+/g, '/');
+            const cleanAssetsDir = repoConfig.assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
+
+            // Upload pending assets first
+            for (const [filename, localUri] of Object.entries(pendingAssets)) {
+                const response = await fetch(localUri);
                 const blob = await response.blob();
                 const reader = new FileReader();
-                const base64Promise = new Promise<string>((resolve) => {
+                const base64Data = await new Promise<string>((resolve) => {
                     reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
                     reader.readAsDataURL(blob);
                 });
-                const base64Data = await base64Promise;
 
-                const assetPath = `${config.assetsDir}/${img.filename}`;
-                await axios.put(`https://api.github.com/repos/${config.repo}/contents/${assetPath}`, {
-                    message: `Upload ${img.filename}`,
-                    content: base64Data
+                const assetPath = `${cleanAssetsDir}/${filename}`;
+                let assetSha = undefined;
+                try {
+                    const assetCheck = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${assetPath}`, {
+                        headers: {
+                            Authorization: `token ${token}`,
+                            'Cache-Control': 'no-cache'
+                        }
+                    });
+                    assetSha = assetCheck.data.sha;
+                } catch (e: any) {
+                    if (e.response?.status !== 404) throw e;
+                }
+
+                await axios.put(`https://api.github.com/repos/${repoPath}/contents/${assetPath}`, {
+                    message: `Upload ${filename}`,
+                    content: base64Data,
+                    sha: assetSha
                 }, {
                     headers: { Authorization: `token ${token}` }
                 });
             }
 
-            // 2. Save Markdown
-            const savePath = isNew ? `${config.contentDir}/${title.toLowerCase().replace(/\s+/g, '-')}.md` : decodedPath;
+            let currentSha = sha;
+            try {
+                const checkResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${cleanPostPath}`, {
+                    headers: {
+                        Authorization: `token ${token}`,
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                currentSha = checkResponse.data.sha;
+                setSha(currentSha);
+            } catch (e: any) {
+                if (e.response?.status !== 404) throw e;
+            }
+
             const payload = {
-                message: commitMsg || (isNew ? `Create ${title}` : `Update ${title}`),
+                message: msg || (isNew ? `Create ${title}` : `Update ${title}`),
                 content: Buffer.from(content).toString('base64'),
-                sha: sha || undefined
+                sha: currentSha || undefined
             };
 
-            const response = await axios.put(`https://api.github.com/repos/${config.repo}/contents/${savePath}`, payload, {
+            const saveResponse = await axios.put(`https://api.github.com/repos/${repoPath}/contents/${cleanPostPath}`, payload, {
                 headers: { Authorization: `token ${token}` }
             });
 
-            setSha(response.data.content.sha);
-            setPendingImages([]);
+            setSha(saveResponse.data.content.sha);
+            setPendingAssets({});
             await AsyncStorage.removeItem(AUTOSAVE_KEY);
-            setSnackbarMsg('Post published to GitHub');
+            setSnackbarMsg('Published to GitHub');
             setSnackbarVisible(true);
-
-            if (isNew) {
-                router.replace(`/editor/${encodeURIComponent(savePath)}`);
-            }
         } catch (e: any) {
             console.error('[Editor] Save failed', e);
-            setSnackbarMsg(e.message || 'Failed to save post');
+            const githubError = e.response?.data?.message || e.message || 'Unknown error';
+            setSnackbarMsg(`Save failed: ${githubError}`);
             setSnackbarVisible(true);
         } finally {
             setIsSaving(false);
         }
     };
 
-    const insertText = (before: string, after: string = '') => {
-        const { start, end } = selection;
-        const selectedText = content.substring(start, end);
-        const newContent = content.substring(0, start) + before + selectedText + after + content.substring(end);
-        setContent(newContent);
-    };
-
     const pickImage = async () => {
         const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'],
             allowsEditing: true,
             quality: 0.8,
         });
@@ -152,21 +576,33 @@ export default function Editor() {
                 [{ resize: { width: 1200 } }],
                 { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
             );
-
-            const filename = `img_${Date.now()}.jpg`;
-            setPendingImages(prev => [...prev, { localUri: resized.uri, filename }]);
-
-            const relativePath = `/${config.assetsDir}/${filename}`;
-            insertText(`![image](${relativePath})`, '');
+            setLastPickedUri(resized.uri);
+            setIsImageNameVisible(true);
         }
     };
 
-    const toggleDraft = () => {
-        if (content.includes('draft: true')) {
-            setContent(content.replace('draft: true', 'draft: false'));
-        } else if (content.includes('draft: false')) {
-            setContent(content.replace('draft: false', 'draft: true'));
-        }
+    const confirmImage = (name: string) => {
+        if (!lastPickedUri || !name || !repoConfig) return;
+        const finalName = name.includes('.') ? name : `${name}.jpg`;
+        setPendingAssets(prev => ({ ...prev, [finalName]: lastPickedUri }));
+
+        const relativePath = `/${repoConfig.assetsDir}/${finalName}`;
+        const newContent = content.substring(0, selection.start) + `![${finalName}](${relativePath})` + content.substring(selection.end);
+        setContent(newContent);
+
+        // Switch to preview just to see it (optional, maybe stay in edit)
+        // setMode('preview');
+
+        setIsImageNameVisible(false);
+        setLastPickedUri(null);
+    };
+
+    const handleInsertAsset = (filename: string) => {
+        if (!repoConfig) return;
+        const relativePath = `/${repoConfig.assetsDir}/${filename}`;
+        const newContent = content.substring(0, selection.start) + `![${filename}](${relativePath})` + content.substring(selection.end);
+        setContent(newContent);
+        setMode('edit');
     };
 
     return (
@@ -174,13 +610,9 @@ export default function Editor() {
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={[styles.container, { backgroundColor: theme.colors.background }]}
         >
-            <Appbar.Header elevated style={{ backgroundColor: theme.colors.surface }}>
+            <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
                 <Appbar.BackAction onPress={() => router.back()} />
                 <Appbar.Content title={title} titleStyle={styles.appbarTitle} />
-                <ToggleButton.Row onValueChange={v => v && setMode(v as any)} value={mode}>
-                    <ToggleButton icon="pencil-outline" value="edit" />
-                    <ToggleButton icon="eye-outline" value="preview" />
-                </ToggleButton.Row>
                 <Appbar.Action
                     icon="cloud-upload-outline"
                     onPress={() => setIsCommitModalVisible(true)}
@@ -188,78 +620,79 @@ export default function Editor() {
                 />
             </Appbar.Header>
 
+            <View style={styles.tabContainer}>
+                <SegmentedButtons
+                    value={mode}
+                    onValueChange={setMode}
+                    buttons={[
+                        { value: 'edit', label: 'Edit', icon: 'pencil' },
+                        { value: 'preview', label: 'Preview', icon: 'eye' },
+                        { value: 'assets', label: 'Assets', icon: 'image-multiple' },
+                    ]}
+                    style={{ marginHorizontal: 16, marginBottom: 8 }}
+                />
+            </View>
+
             <View style={styles.editorContainer}>
-                {mode === 'edit' ? (
-                    <>
-                        {isNew && (
-                            <TextInput
-                                style={[styles.titleInput, { color: theme.colors.primary, backgroundColor: theme.colors.surface }]}
-                                value={title}
-                                onChangeText={setTitle}
-                                placeholder="File name..."
-                            />
-                        )}
-                        <RNTextInput
-                            ref={inputRef}
-                            style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.surface }]}
-                            multiline
-                            value={content}
-                            onChangeText={setContent}
-                            onSelectionChange={e => setSelection(e.nativeEvent.selection)}
-                            placeholder="Start writing..."
-                            textAlignVertical="top"
-                        />
-                        <View style={[styles.toolbar, { backgroundColor: theme.colors.surface }]}>
-                            <IconButton icon="format-header-1" onPress={() => insertText('# ', '')} />
-                            <IconButton icon="format-bold" onPress={() => insertText('**', '**')} />
-                            <IconButton icon="format-italic" onPress={() => insertText('_', '_')} />
-                            <IconButton icon="image-outline" onPress={pickImage} />
-                            <IconButton
-                                icon={content.includes('draft: true') ? "eye-off-outline" : "eye-check-outline"}
-                                onPress={toggleDraft}
-                                iconColor={content.includes('draft: true') ? theme.colors.outline : theme.colors.primary}
-                            />
-                        </View>
-                    </>
-                ) : (
-                    <ScrollView contentContainerStyle={styles.preview}>
-                        <Markdown style={{
-                            body: { color: theme.colors.onSurface, fontSize: 16, lineHeight: 24 },
-                            heading1: { color: theme.colors.primary, marginVertical: 12, fontWeight: 'bold' },
-                            image: { borderRadius: 12, marginVertical: 16 }
-                        }}>
+                {mode === 'preview' && (
+                    <ScrollView style={styles.previewContainer}>
+                        <Markdown style={markdownStyle} rules={renderRules}>
                             {content}
                         </Markdown>
                     </ScrollView>
                 )}
+                {mode === 'edit' && (
+                    <View style={{ flex: 1 }}>
+                        <NativeTextInput
+                            ref={inputRef}
+                            style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.background }]}
+                            multiline
+                            value={content}
+                            onChangeText={setContent}
+                            onSelectionChange={e => setSelection(e.nativeEvent.selection)}
+                            placeholder="Write something beautiful..."
+                            textAlignVertical="top"
+                        // autoFocus
+                        />
+                        {/* Floating Action Button for adding images in Edit mode */}
+                        <IconButton
+                            icon="image-plus"
+                            mode="contained"
+                            size={28}
+                            style={styles.fab}
+                            onPress={pickImage}
+                        />
+                    </View>
+                )}
+                {mode === 'assets' && (
+                    <AssetsManager
+                        repoPath={repoPath}
+                        assetsDir={repoConfig?.assetsDir || 'assets'}
+                        onInsert={handleInsertAsset}
+                    />
+                )}
             </View>
 
             <Portal>
-                <Modal
+                <ImageNameDialog
+                    visible={isImageNameVisible}
+                    onDismiss={() => setIsImageNameVisible(false)}
+                    onConfirm={confirmImage}
+                    initialValue={`img_${Date.now()}.jpg`}
+                />
+
+                <CommitDialog
                     visible={isCommitModalVisible}
                     onDismiss={() => setIsCommitModalVisible(false)}
-                    contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
-                >
-                    <Text variant="titleLarge" style={styles.modalTitle}>Commit Changes</Text>
-                    <TextInput
-                        label="Commit Message"
-                        value={commitMsg}
-                        onChangeText={setCommitMsg}
-                        mode="outlined"
-                        style={styles.modalInput}
-                    />
-                    <View style={styles.modalButtons}>
-                        <Button onPress={() => setIsCommitModalVisible(false)}>Cancel</Button>
-                        <Button mode="contained" onPress={handleSave}>Push to GitHub</Button>
-                    </View>
-                </Modal>
+                    onPublish={handlePublish}
+                    initialMsg={isNew ? `Create ${title}` : `Update ${title}`}
+                />
             </Portal>
 
             <Snackbar
                 visible={snackbarVisible}
                 onDismiss={() => setSnackbarVisible(false)}
                 duration={3000}
-                action={{ label: 'OK', onPress: () => setSnackbarVisible(false) }}
             >
                 {snackbarMsg}
             </Snackbar>
@@ -269,20 +702,28 @@ export default function Editor() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    appbarTitle: { fontSize: 18, fontWeight: 'bold' },
+    appbarTitle: { fontSize: 18, fontWeight: 'bold', opacity: 0.8 },
+    tabContainer: { paddingBottom: 8 },
     editorContainer: { flex: 1 },
-    titleInput: { fontSize: 22, fontWeight: 'bold', padding: 20, paddingBottom: 0 },
-    input: { flex: 1, padding: 20, fontSize: 17, lineHeight: 26 },
-    toolbar: {
+    input: { flex: 1, padding: 24, fontSize: 18, lineHeight: 28 },
+    previewContainer: { flex: 1, padding: 24 },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+    assetsGrid: { padding: 4 },
+    assetCard: { width: ITEM_SIZE, margin: 4, borderRadius: 12, overflow: 'hidden' },
+    assetThumbContainer: { position: 'relative' },
+    assetImage: { width: '100%', aspectRatio: 1 },
+    assetOverlay: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
         flexDirection: 'row',
-        paddingHorizontal: 8,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: 'rgba(0,0,0,0.1)',
-        justifyContent: 'space-around',
+        padding: 4
     },
-    preview: { padding: 24 },
-    modal: { padding: 24, margin: 24, borderRadius: 28 },
-    modalTitle: { marginBottom: 16, fontWeight: 'bold' },
-    modalInput: { marginBottom: 24 },
-    modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }
+    assetCardName: { fontSize: 11, padding: 4, textAlign: 'center' },
+    fab: {
+        position: 'absolute',
+        margin: 16,
+        right: 0,
+        bottom: 0,
+    },
 });
