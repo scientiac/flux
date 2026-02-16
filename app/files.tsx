@@ -1,11 +1,19 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { Buffer } from 'buffer';
+import { Image } from 'expo-image';
+import * as ImageManipulator from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Animated, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { RectButton, Swipeable } from 'react-native-gesture-handler';
-import { Appbar, Avatar, Button, Dialog, FAB, List, Portal, Searchbar, Snackbar, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
+import React, { memo, useCallback, useEffect, useState } from 'react';
+import { Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
+
+const { width } = Dimensions.get('window');
+const COLUMN_COUNT = 2;
+const ASSET_ITEM_SIZE = (width - 48) / COLUMN_COUNT;
 
 // Helper to format relative dates like GitHub/Gmail
 const formatRelativeDate = (dateString: string) => {
@@ -21,18 +29,44 @@ const formatRelativeDate = (dateString: string) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
-// Sub-component for Rename Dialog
-const RenameDialog = ({ visible, onDismiss, onRename, initialValue }: { visible: boolean, onDismiss: () => void, onRename: (val: string) => void, initialValue: string }) => {
-    const theme = useTheme();
+// Sub-component for Image Naming Dialog
+const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string }) => {
     const [localValue, setLocalValue] = useState(initialValue);
     useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
-            <Dialog.Title>Rename Post</Dialog.Title>
+            <Dialog.Title>Upload Image</Dialog.Title>
             <Dialog.Content>
                 <TextInput
-                    placeholder="New Filename"
+                    label="Filename"
+                    value={localValue}
+                    onChangeText={setLocalValue}
+                    mode="flat"
+                    autoFocus
+                />
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
+                <Button mode="contained" onPress={() => onConfirm(localValue)} style={{ borderRadius: 20 }}>Upload</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
+// Sub-component for Rename Dialog
+const RenameDialog = ({ visible, onDismiss, onRename, initialValue, title = "Rename", label = "Name" }: { visible: boolean, onDismiss: () => void, onRename: (val: string) => void, initialValue: string, title?: string, label?: string }) => {
+    const theme = useTheme();
+    const [localValue, setLocalValue] = useState(initialValue);
+
+    useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
+
+    return (
+        <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
+            <Dialog.Title>{title}</Dialog.Title>
+            <Dialog.Content>
+                <TextInput
+                    label={label}
                     value={localValue}
                     onChangeText={setLocalValue}
                     mode="flat"
@@ -44,24 +78,24 @@ const RenameDialog = ({ visible, onDismiss, onRename, initialValue }: { visible:
             </Dialog.Content>
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
-                <Button onPress={() => onRename(localValue)} disabled={!localValue} mode="contained" style={{ borderRadius: 20 }}>Rename</Button>
+                <Button onPress={() => onRename(localValue)} disabled={!localValue} mode="contained" style={{ borderRadius: 20 }}>Confirm</Button>
             </Dialog.Actions>
         </Dialog>
     );
 };
 
-// Sub-component for New File Dialog
-const NewFileDialog = ({ visible, onDismiss, onCreate }: { visible: boolean, onDismiss: () => void, onCreate: (val: string) => void }) => {
+// Sub-component for New Post Dialog
+const NewFileDialog = ({ visible, onDismiss, onCreate, title, label }: { visible: boolean, onDismiss: () => void, onCreate: (val: string) => void, title: string, label: string }) => {
     const theme = useTheme();
     const [localValue, setLocalValue] = useState('');
     useEffect(() => { if (visible) setLocalValue(''); }, [visible]);
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
-            <Dialog.Title>New Post</Dialog.Title>
+            <Dialog.Title>{title}</Dialog.Title>
             <Dialog.Content>
                 <TextInput
-                    placeholder="Filename"
+                    placeholder={label}
                     value={localValue}
                     onChangeText={setLocalValue}
                     mode="flat"
@@ -70,198 +104,315 @@ const NewFileDialog = ({ visible, onDismiss, onCreate }: { visible: boolean, onD
                     selectionColor={theme.colors.primary}
                     activeUnderlineColor={theme.colors.primary}
                 />
-                <Text variant="bodySmall" style={{ marginTop: 12, opacity: 0.6, marginLeft: 4 }}>.md will be added automatically</Text>
             </Dialog.Content>
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
-                <Button onPress={() => onCreate(localValue)} disabled={!localValue} mode="contained" style={{ borderRadius: 20 }}>Create</Button>
+                <Button onPress={() => onCreate(localValue)} disabled={!localValue} mode="contained" style={{ borderRadius: 20 }}>{title.split(' ')[0]}</Button>
             </Dialog.Actions>
         </Dialog>
     );
 };
 
-const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRename: () => void, onDelete: () => void, onPress: () => void }) => {
-    const theme = useTheme();
-    const swipeableRef = useRef<Swipeable>(null);
+// Sub-component for Publish Draft Dialog
+const PublishDraftDialog = ({ visible, onDismiss, onPublish, initialTitle }: { visible: boolean, onDismiss: () => void, onPublish: (commitMsg: string) => void, initialTitle: string }) => {
+    const [commitMsg, setCommitMsg] = useState(`Create ${initialTitle}`);
 
-    const renderRightActions = (progress: any, dragX: any) => {
-        const trans = dragX.interpolate({
-            inputRange: [-100, 0],
-            outputRange: [1, 0],
-            extrapolate: 'clamp',
-        });
-        return (
-            <View style={styles.rightActionContainer}>
-                <Animated.View style={{ flex: 1, transform: [{ scale: trans }] }}>
-                    <RectButton style={[styles.actionButton, { backgroundColor: theme.colors.errorContainer }]} onPress={onDelete}>
-                        <List.Icon icon="delete-outline" color={theme.colors.error} />
-                    </RectButton>
-                </Animated.View>
-            </View>
-        );
-    };
-
-    const renderLeftActions = (progress: any, dragX: any) => {
-        const trans = dragX.interpolate({
-            inputRange: [0, 100],
-            outputRange: [0, 1],
-            extrapolate: 'clamp',
-        });
-        return (
-            <View style={styles.leftActionContainer}>
-                <Animated.View style={{ flex: 1, transform: [{ scale: trans }] }}>
-                    <RectButton style={[styles.actionButton, { backgroundColor: theme.colors.primaryContainer }]} onPress={onRename}>
-                        <List.Icon icon="pencil-outline" color={theme.colors.primary} />
-                    </RectButton>
-                </Animated.View>
-            </View>
-        );
-    };
+    useEffect(() => {
+        if (visible) {
+            setCommitMsg(`Create ${initialTitle}`);
+        }
+    }, [visible, initialTitle]);
 
     return (
-        <Swipeable
-            ref={swipeableRef}
-            renderRightActions={renderRightActions}
-            renderLeftActions={renderLeftActions}
-            friction={1.8}
-            rightThreshold={80}
-            leftThreshold={80}
-            containerStyle={styles.swipeableContainer}
-            onSwipeableWillOpen={(direction) => {
-                if (direction === 'left') {
-                    onRename();
-                } else {
-                    onDelete();
-                }
-                swipeableRef.current?.close();
-            }}
-        >
-            <TouchableRipple
-                onPress={onPress}
-                rippleColor="rgba(0,0,0,0.1)"
-                style={styles.ripple}
-            >
-                <View style={styles.listItemWrapper}>
-                    <List.Item
-                        title={item.name}
-                        titleStyle={styles.listItemTitle}
-                        description={item.lastModified ? formatRelativeDate(item.lastModified) : 'Unknown date'}
-                        descriptionStyle={styles.listItemSubtitle}
-                        left={props => <List.Icon {...props} icon="file-document-outline" color={theme.colors.primary} />}
-                        right={props => <List.Icon {...props} icon="chevron-right" color={theme.colors.outline} />}
-                        style={[styles.listItem, { backgroundColor: theme.colors.background }]}
+        <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
+            <Dialog.Title>Publish to GitHub</Dialog.Title>
+            <Dialog.Content>
+                <TextInput
+                    label="Commit Message"
+                    value={commitMsg}
+                    onChangeText={setCommitMsg}
+                    mode="flat"
+                />
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
+                <Button mode="contained" onPress={() => onPublish(commitMsg)} style={{ borderRadius: 20 }}>Push</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
+// Sub-component for Asset Item
+const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, headers: any, onRename: () => void, onDelete: () => void }) => {
+    const theme = useTheme();
+    return (
+        <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant }]}>
+            <View style={styles.assetThumbContainer}>
+                <Image
+                    source={{ uri: item.download_url, headers }}
+                    style={styles.assetImage}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                />
+                <View style={styles.assetOverlay}>
+                    <IconButton
+                        icon="pencil"
+                        iconColor="white"
+                        size={18}
+                        onPress={onRename}
+                        style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
+                    />
+                    <IconButton
+                        icon="delete"
+                        iconColor={theme.colors.error}
+                        size={18}
+                        onPress={onDelete}
+                        style={{ backgroundColor: 'rgba(255,255,255,0.8)', margin: 2 }}
                     />
                 </View>
-            </TouchableRipple>
-        </Swipeable>
+            </View>
+            <View style={{ backgroundColor: theme.colors.surface, padding: 4 }}>
+                <Text variant="bodySmall" numberOfLines={1} style={styles.assetName}>{item.name}</Text>
+            </View>
+        </View>
+    );
+});
+
+// Sub-component for Draft Item
+const DraftItem = memo(({ item, onPress, onDelete, onPublish, onRename }: { item: any, onPress: () => void, onDelete: () => void, onPublish: () => void, onRename: () => void }) => {
+    const theme = useTheme();
+    return (
+        <TouchableRipple onPress={onPress} style={styles.draftCardWrapper}>
+            <View style={[styles.draftCard, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
+                <View style={styles.draftHeader}>
+                    <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.title || 'Untitled Draft'}</Text>
+                    <View style={{ flexDirection: 'row' }}>
+                        <IconButton icon="pencil-outline" size={20} iconColor={theme.colors.primary} onPress={onRename} />
+                        <IconButton icon="cloud-upload-outline" size={20} iconColor={theme.colors.primary} onPress={onPublish} />
+                        <IconButton icon="delete-outline" size={20} iconColor={theme.colors.error} onPress={onDelete} />
+                    </View>
+                </View>
+                <Text variant="labelSmall" style={styles.draftDate}>
+                    {formatRelativeDate(item.lastModified)}
+                </Text>
+            </View>
+        </TouchableRipple>
+    );
+});
+
+const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRename: () => void, onDelete: () => void, onPress: () => void }) => {
+    const theme = useTheme();
+    return (
+        <TouchableRipple onPress={onPress} style={styles.draftCardWrapper}>
+            <View style={[styles.draftCard, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
+                <View style={styles.draftHeader}>
+                    <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.name}</Text>
+                    <View style={{ flexDirection: 'row' }}>
+                        <IconButton icon="pencil-outline" size={20} iconColor={theme.colors.primary} onPress={onRename} />
+                        <IconButton icon="delete-outline" size={20} iconColor={theme.colors.error} onPress={onDelete} />
+                    </View>
+                </View>
+                {item.lastModified && (
+                    <Text variant="labelSmall" style={styles.draftDate}>
+                        {formatRelativeDate(item.lastModified)}
+                    </Text>
+                )}
+            </View>
+        </TouchableRipple>
     );
 });
 
 export default function Files() {
-    const { config, updateRepoConfig, repoCache, setRepoFileCache } = useAppContext();
+    const { config, repoCache, setRepoFileCache, assetCache, setRepoAssetCache, localDrafts, saveDraft, deleteDraft } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
+
+    const [mode, setMode] = useState<'posts' | 'drafts' | 'assets'>('posts');
 
     const repoPath = config.repo;
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
 
     const [files, setFiles] = useState<any[]>(repoPath ? (repoCache[repoPath] || []) : []);
+    const [assets, setAssets] = useState<any[]>(repoPath ? (assetCache[repoPath] || []) : []);
     const [isLoading, setIsLoading] = useState(false);
+    const [githubToken, setGithubToken] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
 
     const [isNewFileVisible, setIsNewFileVisible] = useState(false);
+    const [isNewDraftVisible, setIsNewDraftVisible] = useState(false);
     const [isRenameVisible, setIsRenameVisible] = useState(false);
     const [isDeleteVisible, setIsDeleteVisible] = useState(false);
     const [selectedFile, setSelectedFile] = useState<any>(null);
+    const [selectedAsset, setSelectedAsset] = useState<any>(null);
+
+    const [isImageNameVisible, setIsImageNameVisible] = useState(false);
+    const [pendingImage, setPendingImage] = useState<any>(null);
 
     const [snackbarVisible, setSnackbarVisible] = useState(false);
     const [snackbarMsg, setSnackbarMsg] = useState('');
 
+    const [isPublishDialogVisible, setIsPublishDialogVisible] = useState(false);
+    const [selectedDraft, setSelectedDraft] = useState<any>(null);
+    const [isDeleteDraftVisible, setIsDeleteDraftVisible] = useState(false);
+    const [isRenameDraftVisible, setIsRenameDraftVisible] = useState(false);
+    const [tombstones, setTombstones] = useState<Set<string>>(new Set());
+
+    useEffect(() => {
+        SecureStore.getItemAsync('github_access_token').then(setGithubToken);
+    }, []);
+
     const fetchFiles = useCallback(async (isManualRefresh = false) => {
         if (!repoPath || !repoConfig) return;
-
-        const currentCache = repoCache[repoPath] || [];
-        if (currentCache.length === 0 || isManualRefresh) {
+        if (isManualRefresh) {
             setIsLoading(true);
+            setTombstones(new Set());
+            // Clear all local autosaves related to this repo to force fresh fetch
+            const allKeys = await AsyncStorage.getAllKeys();
+            const repoAutosaves = allKeys.filter((k: string) => k.startsWith('flux_draft_') && k.includes(encodeURIComponent(repoConfig.contentDir)));
+            if (repoAutosaves.length > 0) await AsyncStorage.multiRemove(repoAutosaves);
         }
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            const filesResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${repoConfig.contentDir}`, {
+                headers: {
+                    Authorization: `token ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
+            });
+            if (Array.isArray(filesResponse.data)) {
+                let mdFiles = filesResponse.data.filter((f: any) => f.type === 'file' && f.name.match(/\.(md|markdown)$/i));
 
+                // Fetch commit dates in parallel to show "last modified"
+                mdFiles = await Promise.all(mdFiles.map(async (file: any) => {
+                    try {
+                        const commitRes = await axios.get(`https://api.github.com/repos/${repoPath}/commits?path=${encodeURIComponent(file.path)}&per_page=1`, {
+                            headers: { Authorization: `token ${token}` }
+                        });
+                        if (commitRes.data && commitRes.data.length > 0) {
+                            return { ...file, lastModified: commitRes.data[0].commit.committer.date };
+                        }
+                    } catch (e) {
+                        console.error(`[Files] Failed to fetch commit for ${file.name}`, e);
+                    }
+                    return file;
+                }));
+
+                setFiles(mdFiles);
+                await setRepoFileCache(repoPath, mdFiles);
+            }
+        } catch (e: any) {
+            if (e.response?.status === 404) {
+                setFiles([]);
+                await setRepoFileCache(repoPath, []);
+            } else {
+                console.error('[Files] Fetch failed', e);
+            }
+        } finally { setIsLoading(false); }
+    }, [repoPath, repoConfig, setRepoFileCache]);
+
+    const fetchAssets = useCallback(async (isManualRefresh = false) => {
+        if (!repoPath || !repoConfig) return;
+        if (isManualRefresh) {
+            setIsLoading(true);
+            setTombstones(new Set());
+        }
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${repoConfig.assetsDir}`, {
+                headers: {
+                    Authorization: `token ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
+            });
+            if (Array.isArray(response.data)) {
+                const imageFiles = response.data.filter((f: any) => f.type === 'file' && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i));
+                setAssets(imageFiles);
+                await setRepoAssetCache(repoPath, imageFiles);
+            }
+        } catch (e: any) {
+            if (e.response?.status === 404) {
+                setAssets([]);
+                await setRepoAssetCache(repoPath, []);
+            } else {
+                console.error('[Assets] Fetch failed', e);
+            }
+        } finally { setIsLoading(false); }
+    }, [repoPath, repoConfig, setRepoAssetCache]);
+
+    useEffect(() => {
+        if (repoPath) {
+            if (mode === 'posts') fetchFiles();
+            else if (mode === 'assets') fetchAssets();
+        }
+    }, [repoPath, mode, fetchFiles, fetchAssets]);
+
+    const handlePublishDraft = async (commitMsg: string) => {
+        if (!selectedDraft || !repoPath || !repoConfig) return;
+        setIsPublishDialogVisible(false);
+        setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
             if (!token) throw new Error('Not authenticated');
 
-            const filesResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${repoConfig.contentDir}`, {
+            // Use drafting title literally as filename
+            const requestedFilename = selectedDraft.title;
+            const extFilename = requestedFilename.endsWith('.md') ? requestedFilename : `${requestedFilename}.md`;
+            const cleanPostPath = `${repoConfig.contentDir}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+
+            // Check if file exists to get SHA (prevent "sha wasn't supplied" error)
+            let currentSha = undefined;
+            try {
+                const checkRes = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${cleanPostPath}`, {
+                    headers: { Authorization: `token ${token}`, 'Cache-Control': 'no-cache' }
+                });
+                currentSha = checkRes.data.sha;
+            } catch (e: any) {
+                if (e.response?.status !== 404) throw e;
+            }
+
+            // Simple publish for draft content
+            await axios.put(`https://api.github.com/repos/${repoPath}/contents/${cleanPostPath}`, {
+                message: commitMsg,
+                content: Buffer.from(selectedDraft.content).toString('base64'),
+                sha: currentSha
+            }, {
                 headers: { Authorization: `token ${token}` }
             });
 
-            if (Array.isArray(filesResponse.data)) {
-                let mdFiles = filesResponse.data.filter((f: any) =>
-                    f.type === 'file' && (f.name.endsWith('.md') || f.name.endsWith('.markdown'))
-                );
-
-                try {
-                    const enrichedFiles = await Promise.all(mdFiles.map(async (file) => {
-                        try {
-                            const fileCommits = await axios.get(`https://api.github.com/repos/${repoPath}/commits`, {
-                                headers: { Authorization: `token ${token}` },
-                                params: { path: file.path, per_page: 1 }
-                            });
-                            return {
-                                ...file,
-                                lastModified: fileCommits.data[0]?.commit?.author?.date || null
-                            };
-                        } catch (e) {
-                            return file;
-                        }
-                    }));
-
-                    const hasChanged = enrichedFiles.length !== currentCache.length ||
-                        (enrichedFiles.length > 0 && (enrichedFiles[0].sha !== currentCache[0]?.sha || enrichedFiles[0].lastModified !== currentCache[0]?.lastModified));
-
-                    if (hasChanged) {
-                        setFiles(enrichedFiles);
-                        await setRepoFileCache(repoPath, enrichedFiles);
-                        console.log('[Files] Cache updated');
-                    }
-                } catch (e) {
-                    console.error('[Files] Commit fetch failed', e);
-                    const hasChanged = mdFiles.length !== currentCache.length ||
-                        (mdFiles.length > 0 && mdFiles[0].sha !== currentCache[0]?.sha);
-                    if (hasChanged) {
-                        setFiles(mdFiles);
-                        await setRepoFileCache(repoPath, mdFiles);
-                    }
-                }
-            } else {
-                if (currentCache.length !== 0) {
-                    setFiles([]);
-                    await setRepoFileCache(repoPath, []);
-                }
-            }
-            setError(null);
+            await deleteDraft(selectedDraft.id);
+            setSnackbarMsg('Published to GitHub');
+            setSnackbarVisible(true);
+            fetchFiles();
         } catch (e: any) {
-            console.error('[Files] Fetch failed', e);
-            if (e.response?.status === 404) {
-                setError('Directory not found. Please check your site settings.');
-            } else {
-                setError(e.message || 'Failed to fetch files');
-            }
+            console.error('[Files] Publish draft failed', e);
+            setSnackbarMsg(`Publish failed: ${e.response?.data?.message || e.message}`);
+            setSnackbarVisible(true);
         } finally {
             setIsLoading(false);
+            setSelectedDraft(null);
         }
-    }, [repoPath, repoConfig, repoCache, setRepoFileCache]);
+    };
 
-    useEffect(() => {
-        if (repoPath) {
-            setFiles(repoCache[repoPath] || []);
-        } else {
-            setFiles([]);
-        }
-    }, [repoPath, repoCache]);
+    const handleAction = async () => {
+        if (mode === 'posts') setIsNewFileVisible(true);
+        else if (mode === 'drafts') setIsNewDraftVisible(true);
+        else if (mode === 'assets') pickImage();
+    };
 
-    useEffect(() => {
-        fetchFiles();
-    }, [fetchFiles]);
+    const handleCreateDraft = async (title: string) => {
+        const id = Date.now().toString();
+        const template = `---\ntitle: ${title}\ndate: ${new Date().toISOString().split('T')[0]}\ndraft: true\n---\n\n`;
+        await saveDraft({
+            id,
+            title: title || 'New Draft',
+            content: template,
+            lastModified: new Date().toISOString(),
+            repoPath: repoPath || ''
+        });
+        setIsNewDraftVisible(false);
+        router.push(`/editor/draft_${id}?new=true`);
+    };
 
     const handleCreateFile = async (name: string) => {
         if (!repoConfig) return;
@@ -273,23 +424,20 @@ export default function Files() {
 
     const handleDeleteFile = async () => {
         if (!selectedFile || !repoPath) return;
-        const originalFiles = [...files];
-        setFiles(prev => prev.filter(f => f.sha !== selectedFile.sha));
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: {
-                    message: `Delete ${selectedFile.name}`,
-                    sha: selectedFile.sha
-                }
+                data: { message: `Delete ${selectedFile.name}`, sha: selectedFile.sha }
             });
-            await setRepoFileCache(repoPath, files.filter(f => f.sha !== selectedFile.sha));
+            setTombstones(prev => new Set(prev).add(selectedFile.path));
+            const updated = files.filter(f => f.path !== selectedFile.path);
+            setFiles(updated);
+            await setRepoFileCache(repoPath, updated);
             setSnackbarMsg(`${selectedFile.name} deleted`);
             setSnackbarVisible(true);
         } catch (e: any) {
-            setFiles(originalFiles);
             setSnackbarMsg(`Delete failed: ${e.message}`);
             setSnackbarVisible(true);
         } finally {
@@ -297,6 +445,19 @@ export default function Files() {
             setIsDeleteVisible(false);
             setSelectedFile(null);
         }
+    };
+
+    const handleRenameDraft = async (newTitle: string) => {
+        if (!selectedDraft || !newTitle) return;
+        await saveDraft({
+            ...selectedDraft,
+            title: newTitle,
+            lastModified: new Date().toISOString()
+        });
+        setIsRenameDraftVisible(false);
+        setSelectedDraft(null);
+        setSnackbarMsg(`Renamed draft to ${newTitle}`);
+        setSnackbarVisible(true);
     };
 
     const handleRenameFile = async (newName: string) => {
@@ -316,21 +477,14 @@ export default function Files() {
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
                 message: `Rename ${selectedFile.name} to ${cleanName}`,
                 content: response.data.content,
-            }, {
-                headers: { Authorization: `token ${token}` }
-            });
+            }, { headers: { Authorization: `token ${token}` } });
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: {
-                    message: `Delete old file after rename`,
-                    sha: selectedFile.sha
-                }
+                data: { message: `Delete old file after rename`, sha: selectedFile.sha }
             });
-            // Immediately update local state and cache
             const updatedFiles = files.map(f => f.sha === selectedFile.sha ? { ...f, name: cleanName, path: newPath } : f);
             setFiles(updatedFiles);
             await setRepoFileCache(repoPath, updatedFiles);
-
             setSnackbarMsg(`Renamed to ${cleanName}`);
             setSnackbarVisible(true);
         } catch (e: any) {
@@ -343,9 +497,102 @@ export default function Files() {
         }
     };
 
-    const filteredFiles = files.filter(f =>
-        f.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const handleDeleteAsset = async () => {
+        if (!selectedAsset || !repoPath) return;
+        setIsLoading(true);
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+                headers: { Authorization: `token ${token}` },
+                data: { message: `Delete asset ${selectedAsset.name}`, sha: selectedAsset.sha }
+            });
+            setTombstones(prev => new Set(prev).add(selectedAsset.path));
+            const updated = assets.filter(f => f.path !== selectedAsset.path);
+            setAssets(updated);
+            await setRepoAssetCache(repoPath, updated);
+            setSnackbarMsg(`${selectedAsset.name} deleted`);
+            setSnackbarVisible(true);
+        } catch (e: any) {
+            setSnackbarMsg(`Delete failed: ${e.message}`);
+            setSnackbarVisible(true);
+        } finally {
+            setIsLoading(false);
+            setIsDeleteVisible(false);
+            setSelectedAsset(null);
+        }
+    };
+
+    const handleRenameAsset = async (newName: string) => {
+        if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
+        const ext = selectedAsset.name.split('.').pop();
+        const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
+        const newPath = `${repoConfig.assetsDir}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+        setIsLoading(true);
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            const contentRes = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+                headers: { Authorization: `token ${token}` }
+            });
+            await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
+                message: `Rename ${selectedAsset.name}`,
+                content: contentRes.data.content,
+            }, { headers: { Authorization: `token ${token}` } });
+            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+                headers: { Authorization: `token ${token}` },
+                data: { message: `Cleanup after rename`, sha: selectedAsset.sha }
+            });
+            const updated = assets.map(a => a.path === selectedAsset.path ? { ...a, name: cleanName, path: newPath } : a);
+            setAssets(updated);
+            await setRepoAssetCache(repoPath, updated);
+            setSnackbarMsg(`Renamed to ${cleanName}`);
+            setSnackbarVisible(true);
+        } catch (e: any) {
+            setSnackbarMsg(`Rename failed: ${e.message}`);
+            setSnackbarVisible(true);
+        } finally {
+            setIsLoading(false);
+            setIsRenameVisible(false);
+            setSelectedAsset(null);
+        }
+    };
+
+    const pickImage = async () => {
+        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.8 });
+        if (!result.canceled) {
+            const uri = result.assets[0].uri;
+            const filename = uri.split('/').pop() || `img_${Date.now()}.jpg`;
+            setPendingImage({ uri, filename });
+            setIsImageNameVisible(true);
+        }
+    };
+
+    const confirmUpload = async (filename: string) => {
+        if (!pendingImage || !repoPath || !repoConfig) return;
+        setIsImageNameVisible(false);
+        setIsLoading(true);
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            const cleanDir = repoConfig.assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
+            const newPath = `${cleanDir}/${filename}`;
+            const manip = await ImageManipulator.manipulateAsync(pendingImage.uri, [{ resize: { width: 1200 } }], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true });
+            await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, { message: `Upload ${filename}`, content: manip.base64 }, { headers: { Authorization: `token ${token}` } });
+            setSnackbarMsg(`Uploaded ${filename}`);
+            setSnackbarVisible(true);
+            fetchAssets(true);
+        } catch (e: any) {
+            setSnackbarMsg(`Upload failed: ${e.message}`);
+            setSnackbarVisible(true);
+        } finally { setIsLoading(false); setPendingImage(null); }
+    };
+
+    const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path));
+    const filteredAssets = assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path));
+    const filteredDrafts = localDrafts.filter(d =>
+        (d.title.toLowerCase().includes(searchQuery.toLowerCase()) || d.content.toLowerCase().includes(searchQuery.toLowerCase())) &&
+        d.repoPath === repoPath
     );
+
+    const assetHeaders = githubToken ? { Authorization: `token ${githubToken}` } : undefined;
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -354,74 +601,100 @@ export default function Files() {
                     if (router.canGoBack()) router.back();
                     else router.replace('/');
                 }} />
-                <Appbar.Content title="Posts" titleStyle={{ fontWeight: 'bold' }} />
-                <Appbar.Action icon="image-multiple" onPress={() => router.push('/assets')} />
+                <Appbar.Content title="Dashboard" titleStyle={{ fontWeight: 'bold' }} />
                 <Appbar.Action icon="cog" onPress={() => router.push('/config')} />
-                <Appbar.Action icon="refresh" onPress={() => fetchFiles(true)} disabled={isLoading} />
+                <Appbar.Action icon="refresh" onPress={() => mode === 'assets' ? fetchAssets(true) : fetchFiles(true)} disabled={isLoading} />
             </Appbar.Header>
 
-            <View style={styles.content}>
-                <View style={styles.searchContainer}>
-                    <Searchbar
-                        placeholder="Search posts..."
-                        onChangeText={setSearchQuery}
-                        value={searchQuery}
-                        style={styles.searchbar}
-                        inputStyle={styles.searchbarInput}
-                        icon="filter-variant"
-                        elevation={0}
-                    />
-                </View>
-
-                <FlatList
-                    data={filteredFiles}
-                    keyExtractor={(item) => item.sha}
-                    contentContainerStyle={{ paddingBottom: 100 }}
-                    refreshControl={
-                        <RefreshControl
-                            refreshing={isLoading}
-                            onRefresh={() => fetchFiles(true)}
-                        />
-                    }
-                    renderItem={({ item }) => (
-                        <FileItem
-                            item={item}
-                            onRename={() => {
-                                setSelectedFile(item);
-                                setIsRenameVisible(true);
-                            }}
-                            onDelete={() => {
-                                setSelectedFile(item);
-                                setIsDeleteVisible(true);
-                            }}
-                            onPress={() => {
-                                router.push(`/editor/${encodeURIComponent(item.path)}`);
-                            }}
-                        />
-                    )}
-                    ListEmptyComponent={
-                        <View style={styles.emptyState}>
-                            {error ? (
-                                <>
-                                    <Avatar.Icon size={64} icon="alert-circle-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.error} />
-                                    <Text variant="bodyLarge" style={{ color: theme.colors.error, marginTop: 16, textAlign: 'center' }}>
-                                        {error}
-                                    </Text>
-                                    <Button mode="contained" onPress={() => router.push('/config')} style={{ marginTop: 24 }}>
-                                        Configure Paths
-                                    </Button>
-                                </>
-                            ) : (
-                                <>
-                                    <Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
-                                    <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>
-                                        No posts found.
-                                    </Text>
-                                </>
-                            )}
-                        </View>
-                    }
+            <View style={styles.tabContainer}>
+                <SegmentedButtons
+                    value={mode}
+                    onValueChange={(val: any) => { setMode(val); setSearchQuery(''); }}
+                    buttons={[
+                        { value: 'posts', label: 'Posts', icon: 'file-document-outline' },
+                        { value: 'drafts', label: 'Drafts', icon: 'pencil-box-outline' },
+                        { value: 'assets', label: 'Assets', icon: 'image-multiple-outline' },
+                    ]}
+                    style={{ marginHorizontal: 16, marginBottom: 8 }}
                 />
+            </View>
+
+            <View style={styles.searchContainer}>
+                <Searchbar
+                    placeholder={`Search ${mode}...`}
+                    onChangeText={setSearchQuery}
+                    value={searchQuery}
+                    style={styles.searchbar}
+                    inputStyle={styles.searchbarInput}
+                    elevation={0}
+                />
+            </View>
+
+            <View style={styles.content}>
+                {mode === 'posts' && (
+                    <FlatList
+                        data={filteredFiles}
+                        keyExtractor={(item) => item.sha}
+                        contentContainerStyle={styles.draftList}
+                        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchFiles(true)} />}
+                        renderItem={({ item }) => (
+                            <FileItem
+                                item={item}
+                                onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
+                                onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
+                                onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
+                            />
+                        )}
+                        ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View>}
+                    />
+                )}
+
+                {mode === 'drafts' && (
+                    <FlatList
+                        data={filteredDrafts}
+                        keyExtractor={(item) => item.id}
+                        numColumns={1}
+                        contentContainerStyle={styles.draftList}
+                        renderItem={({ item }) => (
+                            <DraftItem
+                                item={item}
+                                onPress={() => router.push(`/editor/draft_${item.id}`)}
+                                onDelete={() => {
+                                    setSelectedDraft(item);
+                                    setIsDeleteDraftVisible(true);
+                                }}
+                                onPublish={() => {
+                                    setSelectedDraft(item);
+                                    setIsPublishDialogVisible(true);
+                                }}
+                                onRename={() => {
+                                    setSelectedDraft(item);
+                                    setIsRenameDraftVisible(true);
+                                }}
+                            />
+                        )}
+                        ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="pencil-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No drafts yet.</Text></View>}
+                    />
+                )}
+
+                {mode === 'assets' && (
+                    <FlatList
+                        data={filteredAssets}
+                        keyExtractor={(item) => item.path}
+                        numColumns={COLUMN_COUNT}
+                        contentContainerStyle={styles.assetGrid}
+                        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchAssets(true)} />}
+                        renderItem={({ item }) => (
+                            <AssetItem
+                                item={item}
+                                headers={assetHeaders}
+                                onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
+                                onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
+                            />
+                        )}
+                        ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>}
+                    />
+                )}
             </View>
 
             <Portal>
@@ -429,40 +702,93 @@ export default function Files() {
                     visible={isNewFileVisible}
                     onDismiss={() => setIsNewFileVisible(false)}
                     onCreate={handleCreateFile}
+                    title="New Post"
+                    label="Filename"
+                />
+
+                <NewFileDialog
+                    visible={isNewDraftVisible}
+                    onDismiss={() => setIsNewDraftVisible(false)}
+                    onCreate={handleCreateDraft}
+                    title="New Draft"
+                    label="Draft Title"
+                />
+
+                <ImageNameDialog
+                    visible={isImageNameVisible}
+                    onDismiss={() => setIsImageNameVisible(false)}
+                    onConfirm={confirmUpload}
+                    initialValue={pendingImage?.filename || ''}
                 />
 
                 <RenameDialog
                     visible={isRenameVisible}
                     onDismiss={() => setIsRenameVisible(false)}
-                    onRename={handleRenameFile}
-                    initialValue={selectedFile?.name?.replace('.md', '') || ''}
+                    onRename={mode === 'assets' ? handleRenameAsset : handleRenameFile}
+                    initialValue={mode === 'assets' ? (selectedAsset?.name?.split('.')[0] || '') : (selectedFile?.name?.replace('.md', '') || '')}
+                />
+
+                <RenameDialog
+                    visible={isRenameDraftVisible}
+                    onDismiss={() => setIsRenameDraftVisible(false)}
+                    onRename={handleRenameDraft}
+                    initialValue={selectedDraft?.title || ''}
+                    title="Rename Draft"
+                    label="Draft Title"
                 />
 
                 <Dialog visible={isDeleteVisible} onDismiss={() => setIsDeleteVisible(false)} style={{ borderRadius: 28 }}>
-                    <Dialog.Title>Delete Post</Dialog.Title>
+                    <Dialog.Title>Delete {mode === 'assets' ? 'Asset' : 'Post'}</Dialog.Title>
                     <Dialog.Content>
-                        <Text>Are you sure you want to delete '{selectedFile?.name}'? This cannot be undone.</Text>
+                        <Text>Are you sure you want to delete '{mode === 'assets' ? selectedAsset?.name : selectedFile?.name}'?</Text>
                     </Dialog.Content>
                     <Dialog.Actions>
                         <Button onPress={() => setIsDeleteVisible(false)}>Cancel</Button>
-                        <Button onPress={handleDeleteFile} textColor={theme.colors.error}>Delete</Button>
+                        <Button onPress={mode === 'assets' ? handleDeleteAsset : handleDeleteFile} textColor={theme.colors.error}>Delete</Button>
                     </Dialog.Actions>
                 </Dialog>
+                <Dialog visible={isDeleteDraftVisible} onDismiss={() => setIsDeleteDraftVisible(false)} style={{ borderRadius: 28 }}>
+                    <Dialog.Title>Delete Draft</Dialog.Title>
+                    <Dialog.Content>
+                        <Text>Are you sure you want to delete '{selectedDraft?.title}'?</Text>
+                    </Dialog.Content>
+                    <Dialog.Actions>
+                        <Button onPress={() => setIsDeleteDraftVisible(false)}>Cancel</Button>
+                        <Button
+                            onPress={async () => {
+                                if (selectedDraft) await deleteDraft(selectedDraft.id);
+                                setIsDeleteDraftVisible(false);
+                                setSelectedDraft(null);
+                            }}
+                            textColor={theme.colors.error}
+                        >
+                            Delete
+                        </Button>
+                    </Dialog.Actions>
+                </Dialog>
+
+                <PublishDraftDialog
+                    visible={isPublishDialogVisible}
+                    onDismiss={() => setIsPublishDialogVisible(false)}
+                    initialTitle={selectedDraft?.title || ''}
+                    onPublish={handlePublishDraft}
+                />
             </Portal>
 
             <Snackbar
                 visible={snackbarVisible}
                 onDismiss={() => setSnackbarVisible(false)}
                 duration={3000}
+                style={{ backgroundColor: theme.colors.secondaryContainer, borderRadius: 12 }}
             >
-                {snackbarMsg}
+                <Text style={{ color: theme.colors.onSecondaryContainer }}>{snackbarMsg}</Text>
             </Snackbar>
 
             <FAB
-                icon="plus"
-                label="New Post"
+                icon={mode === 'assets' ? 'upload' : 'plus'}
+                label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Image'}
                 style={styles.fab}
-                onPress={() => setIsNewFileVisible(true)}
+                onPress={handleAction}
             />
         </View>
     );
@@ -515,6 +841,61 @@ const styles = StyleSheet.create({
         borderRadius: 16,
         paddingHorizontal: 8,
         elevation: 4,
+    },
+    tabContainer: {
+        paddingBottom: 8,
+    },
+    assetGrid: {
+        padding: 8,
+        paddingBottom: 100,
+    },
+    assetCard: {
+        width: ASSET_ITEM_SIZE,
+        margin: 8,
+        borderRadius: 16,
+        overflow: 'hidden',
+        elevation: 2,
+    },
+    assetThumbContainer: { position: 'relative' },
+    assetImage: { width: '100%', aspectRatio: 1 },
+    assetOverlay: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        flexDirection: 'row',
+        padding: 2
+    },
+    assetName: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
+    draftList: {
+        padding: 16,
+        paddingBottom: 100,
+    },
+    draftCardWrapper: {
+        marginBottom: 12,
+        borderRadius: 16,
+    },
+    draftCard: {
+        padding: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+    },
+    draftHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    draftTitle: {
+        flex: 1,
+        fontWeight: 'bold',
+    },
+    draftSnippet: {
+        opacity: 0.7,
+        marginBottom: 8,
+        lineHeight: 18,
+    },
+    draftDate: {
+        opacity: 0.5,
     },
     rightActionContainer: { width: 100, paddingVertical: 8, paddingRight: 12 },
     leftActionContainer: { width: 100, paddingVertical: 8, paddingLeft: 12 },

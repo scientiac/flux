@@ -137,8 +137,9 @@ export default function Config() {
                 visible={snackbarVisible}
                 onDismiss={() => setSnackbarVisible(false)}
                 duration={3000}
+                style={{ backgroundColor: theme.colors.secondaryContainer, borderRadius: 12 }}
             >
-                {snackbarMsg}
+                <Text style={{ color: theme.colors.onSecondaryContainer }}>{snackbarMsg}</Text>
             </Snackbar>
         </View>
     );

@@ -29,7 +29,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
                     label="Filename"
                     value={localValue}
                     onChangeText={setLocalValue}
-                    mode="outlined"
+                    mode="flat"
                     autoFocus
                 />
             </Dialog.Content>
@@ -42,29 +42,67 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
 };
 
 // Sub-component for Commit Message Dialog
-const CommitDialog = ({ visible, onDismiss, onPublish, initialMsg }: { visible: boolean, onDismiss: () => void, onPublish: (msg: string) => void, initialMsg: string }) => {
+const CommitDialog = ({ visible, onDismiss, onPublish, initialMsg, isDraft, initialFilename }: { visible: boolean, onDismiss: () => void, onPublish: (msg: string) => void, initialMsg: string, isDraft: boolean, initialFilename: string }) => {
     const [localMsg, setLocalMsg] = useState(initialMsg);
-    useEffect(() => { if (visible) setLocalMsg(initialMsg); }, [visible, initialMsg]);
+    const theme = useTheme();
+
+    useEffect(() => {
+        if (visible) {
+            setLocalMsg(initialMsg);
+        }
+    }, [visible, initialMsg]);
 
     return (
-        <Dialog visible={visible} onDismiss={onDismiss}>
+        <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
             <Dialog.Title>Publish to GitHub</Dialog.Title>
             <Dialog.Content>
                 <TextInput
                     label="Commit Message"
                     value={localMsg}
                     onChangeText={setLocalMsg}
-                    mode="outlined"
+                    mode="flat"
                     style={{ marginBottom: 8 }}
                 />
             </Dialog.Content>
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
-                <Button mode="contained" onPress={() => onPublish(localMsg)}>Push Changes</Button>
+                <Button mode="contained" onPress={() => onPublish(localMsg)} style={{ borderRadius: 20 }}>Push</Button>
             </Dialog.Actions>
         </Dialog>
     );
 };
+
+// Stabilize image rendering in Markdown preview
+const MemoizedMarkdownImage = React.memo(({ uri, headers, alt, theme }: any) => {
+    return (
+        <View style={{ marginVertical: 16, alignItems: 'center', width: '100%' }}>
+            <Image
+                source={{ uri, headers }}
+                style={{
+                    width: Dimensions.get('window').width - 48,
+                    height: 250,
+                    borderRadius: 16,
+                    backgroundColor: theme.colors.surfaceVariant,
+                    borderWidth: 1,
+                    borderColor: theme.colors.outlineVariant
+                }}
+                contentFit="contain"
+                transition={200}
+                cachePolicy="disk"
+            />
+            {alt ? (
+                <PaperText style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, marginTop: 8, fontStyle: 'italic' }}>
+                    {alt}
+                </PaperText>
+            ) : null}
+        </View>
+    );
+}, (prev, next) => {
+    return prev.uri === next.uri &&
+        prev.alt === next.alt &&
+        prev.theme.colors.surfaceVariant === next.theme.colors.surfaceVariant &&
+        JSON.stringify(prev.headers) === JSON.stringify(next.headers);
+});
 
 // Sub-component for Assets Manager
 const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | null, assetsDir: string, onInsert: (filename: string) => void }) => {
@@ -90,7 +128,10 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
             const token = await SecureStore.getItemAsync('github_access_token');
             const cleanAssetsDir = assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
             const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${cleanAssetsDir}`, {
-                headers: { Authorization: `token ${token}` }
+                headers: {
+                    Authorization: `token ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
             });
             const imageFiles = response.data.filter((f: any) =>
                 f.type === 'file' && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
@@ -263,7 +304,10 @@ export default function Editor() {
     const { path, new: isNewParam } = useLocalSearchParams();
     const isNew = isNewParam === 'true';
     const decodedPath = decodeURIComponent(path as string);
-    const { config } = useAppContext();
+    const isLocalDraft = decodedPath.startsWith('draft_');
+    const draftId = isLocalDraft ? decodedPath.replace('draft_', '') : null;
+
+    const { config, localDrafts, saveDraft, deleteDraft } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
 
@@ -391,47 +435,26 @@ export default function Editor() {
             const { src, alt } = node.attributes;
             let uri = src;
 
-            // Handle relative paths for repo assets
             if (repoPath && repoConfig && !src.startsWith('http')) {
-                const cleanSrc = src.replace(/^\/+/, ''); // Remove leading slash
-                // Check if it matches asset dir or just filename
-                // If it's just a filename, assume it's in assetsDir
-                const targetPath = cleanSrc.includes('/') ? cleanSrc : `${repoConfig.assetsDir}/${cleanSrc}`.replace(/^\/+/, '');
-
-                // Construct raw content URL logic
-                // But typically for private repos we need API or raw.githubusercontent with token (which is tricky)
-                // Better to use API to get download_url, OR use raw.githubusercontent with header?
-                // Simple approach: Use matching logic from pending assets or just raw URL if public.
-                // For authenticated private images, we often can't use simple <Image> unless we proxy or get signed URL.
-                // HOWEVER, React Native `Image` allows headers. Expo Image allows headers.
-
-                // Construct API URL which redirects to raw
+                const cleanSrc = src.replace(/^\/+/, '');
+                const targetPath = cleanSrc.includes('/') ? cleanSrc : `${repoConfig.assetsDir}/${cleanSrc}`.replace(/^\/+/, '').replace(/\/+/g, '/');
                 uri = `https://api.github.com/repos/${repoPath}/contents/${targetPath}`;
             }
 
-            // We need to fetch the download_url if using API content endpoint, 
-            // OR we can try to pass the Authorization header to `expo-image`
-            // But `contents` endpoint returns JSON, not image data directly unless using `application/vnd.github.v3.raw` media type.
-
-            const headers = githubToken ? { Authorization: `token ${githubToken}`, Accept: 'application/vnd.github.v3.raw' } : undefined;
+            const headers = githubToken ? {
+                'Authorization': `Bearer ${githubToken}`,
+                'Accept': 'application/vnd.github.v3.raw',
+                'Cache-Control': 'no-cache'
+            } : undefined;
 
             return (
-                <View key={node.key} style={{ marginVertical: 16, alignItems: 'center', width: '100%' }}>
-                    <Image
-                        source={{ uri, headers }}
-                        style={{
-                            width: Dimensions.get('window').width - 48,
-                            height: 250,
-                            borderRadius: 16,
-                            backgroundColor: theme.colors.surfaceVariant,
-                            borderWidth: 1,
-                            borderColor: theme.colors.outlineVariant
-                        }}
-                        contentFit="contain"
-                        transition={300}
-                    />
-                    {alt ? <PaperText style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, marginTop: 8, fontStyle: 'italic' }}>{alt}</PaperText> : null}
-                </View>
+                <MemoizedMarkdownImage
+                    key={node.key}
+                    uri={uri}
+                    headers={headers}
+                    alt={alt}
+                    theme={theme}
+                />
             );
         },
         softbreak: (node: any, children: any, parent: any, styles: any) => {
@@ -441,19 +464,33 @@ export default function Editor() {
 
 
     const fetchFile = async () => {
+        if (isLocalDraft && draftId) {
+            const draft = localDrafts.find(d => d.id === draftId);
+            if (draft) {
+                setContent(draft.content);
+                setTitle(draft.title);
+            }
+            setIsLoading(false);
+            return;
+        }
+
         if (!repoPath) return;
 
         if (isNew) {
             const draft = await AsyncStorage.getItem(AUTOSAVE_KEY);
             if (draft) setContent(draft);
             else setContent('---\ntitle: ' + title + '\ndate: ' + new Date().toISOString().split('T')[0] + '\ndraft: true\n---\n\n');
+            setIsLoading(false);
             return;
         }
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
             const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${decodedPath}`, {
-                headers: { Authorization: `token ${token}` }
+                headers: {
+                    Authorization: `token ${token}`,
+                    'Cache-Control': 'no-cache'
+                }
             });
             const rawContent = Buffer.from(response.data.content, 'base64').toString('utf8');
             const draft = await AsyncStorage.getItem(AUTOSAVE_KEY);
@@ -481,13 +518,20 @@ export default function Editor() {
     const handlePublish = async (msg: string) => {
         if (!repoPath || !repoConfig) return;
 
+        let cleanPostPath = decodedPath.replace(/^\/+/, '').replace(/\/+/g, '/');
+        if (isLocalDraft) {
+            // Use draft title literally as filename
+            const requestedFilename = title;
+            const extFilename = requestedFilename.endsWith('.md') ? requestedFilename : `${requestedFilename}.md`;
+            cleanPostPath = `${repoConfig.contentDir}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+        }
+
         setIsCommitModalVisible(false);
         setIsSaving(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
             if (!token) throw new Error('Not authenticated');
 
-            const cleanPostPath = decodedPath.replace(/^\/+/, '').replace(/\/+/g, '/');
             const cleanAssetsDir = repoConfig.assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
 
             // Upload pending assets first
@@ -550,12 +594,56 @@ export default function Editor() {
             setSha(saveResponse.data.content.sha);
             setPendingAssets({});
             await AsyncStorage.removeItem(AUTOSAVE_KEY);
+            if (isLocalDraft && draftId) {
+                await deleteDraft(draftId);
+            }
             setSnackbarMsg('Published to GitHub');
             setSnackbarVisible(true);
+
+            // Redirect to the new post URL if it was a draft
+            if (isLocalDraft) {
+                router.replace(`/editor/${encodeURIComponent(cleanPostPath)}`);
+            }
         } catch (e: any) {
             console.error('[Editor] Save failed', e);
             const githubError = e.response?.data?.message || e.message || 'Unknown error';
             setSnackbarMsg(`Save failed: ${githubError}`);
+            setSnackbarVisible(true);
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleSaveLocal = async () => {
+        setIsSaving(true);
+        try {
+            const id = draftId || Date.now().toString();
+            // Try to extract title from content first line if it's # Title
+            let calculatedTitle = title;
+            const titleMatch = content.match(/^#\s+(.+)$/m);
+            if (titleMatch) calculatedTitle = titleMatch[1];
+            else if (content.includes('title:')) {
+                const fmMatch = content.match(/title:\s*(.+)/);
+                if (fmMatch) calculatedTitle = fmMatch[1].replace(/['"]/g, '');
+            }
+
+            await saveDraft({
+                id,
+                title: calculatedTitle || 'Untitled Draft',
+                content,
+                lastModified: new Date().toISOString(),
+                repoPath: repoPath || ''
+            });
+
+            setSnackbarMsg('Draft saved locally');
+            setSnackbarVisible(true);
+
+            // If it was a new post being saved as draft, we might want to redirect to the new draft URL
+            if (!isLocalDraft) {
+                router.replace(`/editor/draft_${id}`);
+            }
+        } catch (e: any) {
+            setSnackbarMsg(`Draft save failed: ${e.message}`);
             setSnackbarVisible(true);
         } finally {
             setIsSaving(false);
@@ -612,12 +700,19 @@ export default function Editor() {
         >
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
                 <Appbar.BackAction onPress={() => router.back()} />
-                <Appbar.Content title={title} titleStyle={styles.appbarTitle} />
+                <Appbar.Content title={title || (isLocalDraft ? 'Untitled Draft' : 'New Post')} titleStyle={styles.appbarTitle} />
                 <Appbar.Action
-                    icon="cloud-upload-outline"
-                    onPress={() => setIsCommitModalVisible(true)}
+                    icon={isLocalDraft ? "content-save" : "pencil-box-outline"}
+                    onPress={handleSaveLocal}
                     disabled={isSaving || isLoading}
                 />
+                {!isLocalDraft && (
+                    <Appbar.Action
+                        icon="cloud-upload-outline"
+                        onPress={() => setIsCommitModalVisible(true)}
+                        disabled={isSaving || isLoading}
+                    />
+                )}
             </Appbar.Header>
 
             <View style={styles.tabContainer}>
@@ -678,7 +773,7 @@ export default function Editor() {
                     visible={isImageNameVisible}
                     onDismiss={() => setIsImageNameVisible(false)}
                     onConfirm={confirmImage}
-                    initialValue={`img_${Date.now()}.jpg`}
+                    initialValue={`${title.toLowerCase().replace(/\s+/g, '-')}_${Date.now()}.jpg`}
                 />
 
                 <CommitDialog
@@ -686,6 +781,8 @@ export default function Editor() {
                     onDismiss={() => setIsCommitModalVisible(false)}
                     onPublish={handlePublish}
                     initialMsg={isNew ? `Create ${title}` : `Update ${title}`}
+                    isDraft={isLocalDraft}
+                    initialFilename={title}
                 />
             </Portal>
 
@@ -693,8 +790,9 @@ export default function Editor() {
                 visible={snackbarVisible}
                 onDismiss={() => setSnackbarVisible(false)}
                 duration={3000}
+                style={{ backgroundColor: theme.colors.secondaryContainer, borderRadius: 12 }}
             >
-                {snackbarMsg}
+                <PaperText style={{ color: theme.colors.onSecondaryContainer }}>{snackbarMsg}</PaperText>
             </Snackbar>
         </KeyboardAvoidingView>
     );

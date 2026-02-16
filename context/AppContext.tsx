@@ -11,6 +11,14 @@ interface AppConfig {
     repoConfigs: { [repoPath: string]: RepoConfig };
 }
 
+interface Draft {
+    id: string;
+    title: string;
+    content: string;
+    lastModified: string;
+    repoPath: string;
+}
+
 interface AppContextType {
     config: AppConfig;
     updateConfig: (newConfig: Partial<AppConfig>) => Promise<void>;
@@ -26,6 +34,9 @@ interface AppContextType {
     setRepoFileCache: (repoPath: string, files: any[]) => Promise<void>;
     assetCache: { [repoPath: string]: any[] };
     setRepoAssetCache: (repoPath: string, assets: any[]) => Promise<void>;
+    localDrafts: Draft[];
+    saveDraft: (draft: Draft) => Promise<void>;
+    deleteDraft: (draftId: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -34,6 +45,7 @@ const STORAGE_KEY = 'flux_settings_v3';
 const REPO_CACHE_KEY = 'flux_cache_repos';
 const FILE_CACHE_PREFIX = 'flux_cache_files_';
 const ASSET_CACHE_PREFIX = 'flux_cache_assets_';
+const DRAFTS_KEY = 'flux_local_drafts';
 
 const DEFAULT_REPO_CONFIG: RepoConfig = {
     contentDir: 'content/posts',
@@ -52,6 +64,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const [cachedRepos, setCachedReposInternal] = useState<any[]>([]);
     const [repoCache, setRepoCache] = useState<{ [repoPath: string]: any[] }>({});
     const [assetCache, setAssetCache] = useState<{ [repoPath: string]: any[] }>({});
+    const [localDrafts, setLocalDrafts] = useState<Draft[]>([]);
 
     const settingsPendingSave = useRef<boolean>(false);
     const cachePendingSave = useRef<{ [repoPath: string]: boolean }>({});
@@ -60,13 +73,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     useEffect(() => {
         const init = async () => {
             try {
-                const [storedSettings, storedRepos] = await Promise.all([
+                const [storedSettings, storedRepos, storedDrafts] = await Promise.all([
                     AsyncStorage.getItem(STORAGE_KEY),
                     AsyncStorage.getItem(REPO_CACHE_KEY),
+                    AsyncStorage.getItem(DRAFTS_KEY),
                 ]);
 
                 if (storedSettings) setConfig(JSON.parse(storedSettings));
                 if (storedRepos) setCachedReposInternal(JSON.parse(storedRepos));
+                if (storedDrafts) setLocalDrafts(JSON.parse(storedDrafts));
 
                 // Load active repo's file and asset cache if exists
                 const activeRepo = JSON.parse(storedSettings || '{}').repo;
@@ -172,6 +187,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setAssetCache(prev => ({ ...prev, [repoPath]: assets }));
     };
 
+    const saveDraft = async (draft: Draft) => {
+        setLocalDrafts(prev => {
+            const index = prev.findIndex(d => d.id === draft.id);
+            let updated;
+            if (index > -1) {
+                updated = [...prev];
+                updated[index] = draft;
+            } else {
+                updated = [draft, ...prev];
+            }
+            AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+            return updated;
+        });
+    };
+
+    const deleteDraft = async (draftId: string) => {
+        setLocalDrafts(prev => {
+            const updated = prev.filter(d => d.id !== draftId);
+            AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+            return updated;
+        });
+    };
+
     const resetConfig = async () => {
         setConfig(DEFAULT_CONFIG);
         setCachedReposInternal([]);
@@ -195,8 +233,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         repoCache,
         setRepoFileCache,
         assetCache,
-        setRepoAssetCache
-    }), [config, isConfigLoading, hasAutoRedirected, cachedRepos, repoCache, assetCache]);
+        setRepoAssetCache,
+        localDrafts,
+        saveDraft,
+        deleteDraft
+    }), [config, isConfigLoading, hasAutoRedirected, cachedRepos, repoCache, assetCache, localDrafts]);
 
     return (
         <AppContext.Provider value={contextValue}>
