@@ -109,7 +109,7 @@ export default function Index() {
     };
 
     // 1. Initial Launch / Redirecting
-    if (isBooting || isConfigLoading || (token && !hasAutoRedirected && config.repo && config.repoConfigs && config.repoConfigs[config.repo])) {
+    if (isBooting || isConfigLoading || isAuthLoading || (token && !hasAutoRedirected && config.repo && config.repoConfigs && config.repoConfigs[config.repo])) {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
                 <ActivityIndicator size="large" color={theme.colors.primary} />
@@ -180,7 +180,7 @@ export default function Index() {
                             refreshing={isFetchingRepos}
                             onRefresh={fetchRepos}
                             colors={[theme.colors.primary]}
-                            progressBackgroundColor={theme.colors.surfaceVariant}
+                            progressBackgroundColor={theme.colors.surface}
                         />
                     }
                     renderItem={({ item }) => (

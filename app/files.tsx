@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useState } from 'react';
-import { Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { BackHandler, Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
@@ -297,6 +297,25 @@ export default function Files() {
 
     useEffect(() => {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
+    }, []);
+
+    // Sync assets from cache (e.g. from Editor updates)
+    useEffect(() => {
+        if (repoPath && assetCache[repoPath]) {
+            setAssets(assetCache[repoPath]);
+        }
+    }, [assetCache, repoPath]);
+
+    useEffect(() => {
+        const onBackPress = () => {
+            // Prevent going back to repo list. Minimize app or do nothing.
+            // User said: "hitting system back button from the dashboard must not navigate back to repo page"
+            BackHandler.exitApp();
+            return true;
+        };
+
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
     }, []);
 
     const fetchFiles = useCallback(async (isManualRefresh = false) => {
@@ -647,11 +666,15 @@ export default function Files() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
-                <Appbar.BackAction onPress={() => {
-                    if (router.canGoBack()) router.back();
-                    else router.replace('/');
-                }} />
                 <Appbar.Content title="Dashboard" titleStyle={{ fontWeight: 'bold' }} />
+                <Button
+                    icon="source-repository"
+                    mode="text"
+                    compact
+                    onPress={() => router.replace('/')}
+                >
+                    Repos
+                </Button>
                 <Button
                     icon="cog-outline"
                     mode="text"
@@ -695,7 +718,14 @@ export default function Files() {
                             data={filteredFiles}
                             keyExtractor={(item) => item.sha}
                             contentContainerStyle={styles.draftList}
-                            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchFiles(true)} />}
+                            refreshControl={
+                                <RefreshControl
+                                    refreshing={isLoading}
+                                    onRefresh={() => fetchFiles(true)}
+                                    colors={[theme.colors.primary]}
+                                    progressBackgroundColor={theme.colors.surface}
+                                />
+                            }
                             renderItem={({ item }) => (
                                 <FileItem
                                     item={item}
@@ -744,7 +774,14 @@ export default function Files() {
                             keyExtractor={(item) => item.path}
                             numColumns={COLUMN_COUNT}
                             contentContainerStyle={styles.assetGrid}
-                            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchAssets(true)} />}
+                            refreshControl={
+                                <RefreshControl
+                                    refreshing={isLoading}
+                                    onRefresh={() => fetchAssets(true)}
+                                    colors={[theme.colors.primary]}
+                                    progressBackgroundColor={theme.colors.surface}
+                                />
+                            }
                             renderItem={({ item }) => (
                                 <AssetItem
                                     item={item}

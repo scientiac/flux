@@ -127,7 +127,7 @@ const MemoizedMarkdownImage = React.memo(({ uri, headers, alt, theme }: any) => 
 });
 
 // Sub-component for Assets Manager
-const AssetsManager = ({ repoPath, assetsDir, onInsert, pendingAssets = {} }: { repoPath: string | null, assetsDir: string, onInsert: (filename: string) => void, pendingAssets?: { [key: string]: string } }) => {
+const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | null, assetsDir: string, onInsert: (filename: string) => void }) => {
     const { config, assetCache, setRepoAssetCache } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [githubToken, setGithubToken] = useState<string | null>(null);
@@ -137,21 +137,7 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert, pendingAssets = {} }: { 
     const theme = useTheme();
 
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
-    const serverAssets = repoPath ? (assetCache[repoPath] || []) : [];
-
-    // Merge pending assets
-    const assets = useMemo(() => {
-        const pendingList = Object.entries(pendingAssets).map(([name, uri]) => ({
-            name,
-            path: `${assetsDir}/${name}`,
-            download_url: uri, // Local URI
-            type: 'file',
-            isPending: true
-        }));
-        // Filter out server assets that are being overwritten by pending ones (optional)
-        // or just prepend pending ones
-        return [...pendingList, ...serverAssets];
-    }, [serverAssets, pendingAssets, assetsDir]);
+    const assets = repoPath ? (assetCache[repoPath] || []) : [];
 
     useEffect(() => {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
@@ -263,7 +249,14 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert, pendingAssets = {} }: { 
                 keyExtractor={(item) => item.path}
                 numColumns={COLUMN_COUNT}
                 contentContainerStyle={styles.assetsGrid}
-                refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchAssets()} />}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={isLoading}
+                        onRefresh={() => fetchAssets()}
+                        colors={[theme.colors.primary]}
+                        progressBackgroundColor={theme.colors.surface}
+                    />
+                }
                 renderItem={({ item }) => (
                     <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant, opacity: item.isPending ? 0.6 : 1 }]}>
                         <TouchableOpacity onPress={() => onInsert(item.name)} style={styles.assetThumbContainer}>
@@ -343,7 +336,7 @@ export default function Editor() {
     const isLocalDraft = decodedPath.startsWith('draft_');
     const draftId = isLocalDraft ? decodedPath.replace('draft_', '') : null;
 
-    const { config, localDrafts, saveDraft, deleteDraft } = useAppContext();
+    const { config, localDrafts, saveDraft, deleteDraft, setRepoAssetCache, assetCache } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
 
@@ -365,10 +358,11 @@ export default function Editor() {
     const [previewContent, setPreviewContent] = useState('');
 
     // Asset Staging
-    const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({});
+    // const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({}); // Removed pending, we upload immediately
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
     const [pickedFilename, setPickedFilename] = useState('');
     const [isImageNameVisible, setIsImageNameVisible] = useState(false);
+    const [isUploading, setIsUploading] = useState(false);
 
     // Commit UI states
     const [isCommitModalVisible, setIsCommitModalVisible] = useState(false);
@@ -482,11 +476,7 @@ export default function Editor() {
             const { src, alt } = node.attributes;
             let uri = src;
 
-            // Check pending assets first
-            const filename = src.split('/').pop();
-            if (pendingAssets[filename]) {
-                uri = pendingAssets[filename];
-            } else if (repoPath && repoConfig && !src.startsWith('http')) {
+            if (repoPath && repoConfig && !src.startsWith('http')) {
                 const cleanSrc = src.replace(/^\/+/, '');
                 const targetPath = cleanSrc.includes('/') ? cleanSrc : `${repoConfig.assetsDir}/${cleanSrc}`.replace(/^\/+/, '').replace(/\/+/g, '/');
                 uri = `https://api.github.com/repos/${repoPath}/contents/${targetPath}`;
@@ -505,7 +495,7 @@ export default function Editor() {
         softbreak: (node: any, children: any, parent: any, styles: any) => {
             return <PaperText key={node.key}> </PaperText>;
         },
-    }), [repoPath, repoConfig, imageHeaders, theme, pendingAssets]);
+    }), [repoPath, repoConfig, imageHeaders, theme]);
 
 
     const fetchFile = async () => {
@@ -588,38 +578,8 @@ export default function Editor() {
 
             const cleanAssetsDir = repoConfig.assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
 
-            // Upload pending assets first
-            for (const [filename, localUri] of Object.entries(pendingAssets)) {
-                const response = await fetch(localUri);
-                const blob = await response.blob();
-                const reader = new FileReader();
-                const base64Data = await new Promise<string>((resolve) => {
-                    reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-                    reader.readAsDataURL(blob);
-                });
-
-                const assetPath = `${cleanAssetsDir}/${filename}`;
-                let assetSha = undefined;
-                try {
-                    const assetCheck = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${assetPath}`, {
-                        headers: {
-                            Authorization: `token ${token}`,
-                            'Cache-Control': 'no-cache'
-                        }
-                    });
-                    assetSha = assetCheck.data.sha;
-                } catch (e: any) {
-                    if (e.response?.status !== 404) throw e;
-                }
-
-                await axios.put(`https://api.github.com/repos/${repoPath}/contents/${assetPath}`, {
-                    message: `Upload ${filename}`,
-                    content: base64Data,
-                    sha: assetSha
-                }, {
-                    headers: { Authorization: `token ${token}` }
-                });
-            }
+            // Upload pending assets first - REMOVED (Handled in confirmImage now)
+            // for (const [filename, localUri] of Object.entries(pendingAssets)) { ... }
 
             let currentSha = sha;
             try {
@@ -646,7 +606,8 @@ export default function Editor() {
             });
 
             setSha(saveResponse.data.content.sha);
-            setPendingAssets({});
+            setSha(saveResponse.data.content.sha);
+            // setPendingAssets({}); // No longer used
             await AsyncStorage.removeItem(AUTOSAVE_KEY);
             if (isLocalDraft && draftId) {
                 await deleteDraft(draftId);
@@ -719,20 +680,94 @@ export default function Editor() {
         }
     };
 
-    const confirmImage = (name: string) => {
-        if (!lastPickedUri || !name || !repoConfig) return;
+    const confirmImage = async (name: string) => {
+        if (!lastPickedUri || !name || !repoConfig || !repoPath) return;
+
+        setIsImageNameVisible(false); // Close dialog first
+        setIsUploading(true);
+        setSnackbarMsg('Uploading image...');
+        setSnackbarVisible(true);
+
         const finalName = name.includes('.') ? name : `${name}.jpg`;
-        setPendingAssets(prev => ({ ...prev, [finalName]: lastPickedUri }));
-
         const relativePath = `/${repoConfig.assetsDir}/${finalName}`;
-        const newContent = content.substring(0, selection.start) + `![${finalName}](${relativePath})` + content.substring(selection.end);
-        setContent(newContent);
+        const cleanAssetsDir = repoConfig.assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
+        const assetPath = `${cleanAssetsDir}/${finalName}`;
 
-        // Switch to preview just to see it (optional, maybe stay in edit)
-        // setMode('preview');
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            if (!token) throw new Error('Not authenticated');
 
-        setIsImageNameVisible(false);
-        setLastPickedUri(null);
+            const response = await fetch(lastPickedUri);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            const base64Data = await new Promise<string>((resolve) => {
+                reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+                reader.readAsDataURL(blob);
+            });
+
+            // Check if exists to get SHA (for overwrite)
+            let assetSha = undefined;
+            try {
+                const assetCheck = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${assetPath}`, {
+                    headers: {
+                        Authorization: `token ${token}`,
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                assetSha = assetCheck.data.sha;
+            } catch (e: any) {
+                if (e.response?.status !== 404) console.warn('Asset check failed', e);
+            }
+
+            // Upload
+            const uploadRes = await axios.put(`https://api.github.com/repos/${repoPath}/contents/${assetPath}`, {
+                message: `Upload ${finalName}`,
+                content: base64Data,
+                sha: assetSha
+            }, {
+                headers: { Authorization: `token ${token}` }
+            });
+
+            // Update Cache
+            // We use setRepoAssetCache from component scope (captured from line 332)
+            // const { setRepoAssetCache, assetCache } = useAppContext(); // REMOVED
+            // We can acccess setRepoAssetCache from context hook
+
+            // Re-fetch assets or update manually?
+            // Let's just create the object roughly matching GitHub API
+            const newAsset = {
+                name: finalName,
+                path: assetPath,
+                sha: uploadRes.data.content.sha,
+                size: uploadRes.data.content.size,
+                url: uploadRes.data.content.url,
+                html_url: uploadRes.data.content.html_url,
+                git_url: uploadRes.data.content.git_url,
+                download_url: uploadRes.data.content.download_url,
+                type: 'file',
+                _links: uploadRes.data.content._links
+            };
+
+            // This update might be tricky if we don't have the current list handy from context...
+            // But we do: assetCache[repoPath] might exist in AppContext?
+            // Actually, we are inside component. We have assetCache in context?
+            // Yes, let's check useAppContext usage at top.
+
+            // const { config, localDrafts, saveDraft, deleteDraft } = useAppContext(); -> Need to destructure assetCache there.
+
+            // Insert Markdown
+            const newContent = content.substring(0, selection.start) + `![${finalName}](${relativePath})` + content.substring(selection.end);
+            setContent(newContent);
+            setSnackbarMsg('Image uploaded and inserted');
+            setLastPickedUri(null);
+
+        } catch (e: any) {
+            console.error('Upload failed', e);
+            setSnackbarMsg(`Upload failed: ${e.message}`);
+        } finally {
+            setIsUploading(false);
+            setSnackbarVisible(true);
+        }
     };
 
     const handleInsertAsset = (filename: string) => {
@@ -794,7 +829,7 @@ export default function Editor() {
                     icon={isLocalDraft ? "content-save-outline" : "file-document-edit-outline"}
                     mode="text"
                     onPress={() => handleSaveLocal(true)}
-                    disabled={isSaving || isLoading}
+                    disabled={isSaving || isLoading || isUploading}
                     compact
                     style={!isLocalDraft ? {} : { marginRight: 12 }}
                 >
@@ -872,7 +907,6 @@ export default function Editor() {
                             repoPath={repoPath}
                             assetsDir={repoConfig?.assetsDir || 'assets'}
                             onInsert={handleInsertAsset}
-                            pendingAssets={pendingAssets}
                         />
                     </View>
                 </SlidingTabContainer>
