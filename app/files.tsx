@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import { Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
+import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
 
@@ -183,17 +183,21 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
                 <View style={styles.assetOverlay}>
                     <IconButton
                         icon="cursor-text"
+                        mode="contained"
+                        containerColor="rgba(0,0,0,0.5)"
                         iconColor="white"
-                        size={18}
+                        size={16}
                         onPress={onRename}
-                        style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
+                        style={{ margin: 2 }}
                     />
                     <IconButton
                         icon="delete"
+                        mode="contained"
+                        containerColor="rgba(0,0,0,0.5)"
                         iconColor={theme.colors.error}
-                        size={18}
+                        size={16}
                         onPress={onDelete}
-                        style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
+                        style={{ margin: 2 }}
                     />
                 </View>
             </View>
@@ -205,46 +209,51 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
 });
 
 // Sub-component for Draft Item
+// Sub-component for DraftItem
 const DraftItem = memo(({ item, onPress, onDelete, onPublish, onRename }: { item: any, onPress: () => void, onDelete: () => void, onPublish: () => void, onRename: () => void }) => {
     const theme = useTheme();
     return (
-        <TouchableRipple onPress={onPress} style={styles.draftCardWrapper}>
-            <View style={[styles.draftCard, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
-                <View style={styles.draftHeader}>
-                    <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.title || 'Untitled Draft'}</Text>
-                    <View style={{ flexDirection: 'row' }}>
-                        <IconButton icon="cursor-text" size={20} iconColor={theme.colors.primary} onPress={onRename} />
-                        <IconButton icon="cloud-upload-outline" size={20} iconColor={theme.colors.primary} onPress={onPublish} />
-                        <IconButton icon="delete-outline" size={20} iconColor={theme.colors.error} onPress={onDelete} />
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
+            <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
+                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
+                    <View style={styles.draftHeader}>
+                        <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.title || 'Untitled Draft'}</Text>
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                            <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
+                            <IconButton mode="contained-tonal" icon="cloud-upload-outline" size={18} iconColor={theme.colors.primary} onPress={onPublish} />
+                            <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
+                        </View>
                     </View>
+                    <Text variant="labelSmall" style={styles.draftDate}>
+                        {formatRelativeDate(item.lastModified)}
+                    </Text>
                 </View>
-                <Text variant="labelSmall" style={styles.draftDate}>
-                    {formatRelativeDate(item.lastModified)}
-                </Text>
-            </View>
-        </TouchableRipple>
+            </TouchableRipple>
+        </Surface>
     );
 });
 
 const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRename: () => void, onDelete: () => void, onPress: () => void }) => {
     const theme = useTheme();
     return (
-        <TouchableRipple onPress={onPress} style={styles.draftCardWrapper}>
-            <View style={[styles.draftCard, { backgroundColor: theme.colors.surfaceVariant, borderColor: theme.colors.outlineVariant }]}>
-                <View style={styles.draftHeader}>
-                    <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.name}</Text>
-                    <View style={{ flexDirection: 'row' }}>
-                        <IconButton icon="cursor-text" size={20} iconColor={theme.colors.primary} onPress={onRename} />
-                        <IconButton icon="delete-outline" size={20} iconColor={theme.colors.error} onPress={onDelete} />
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
+            <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
+                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
+                    <View style={styles.draftHeader}>
+                        <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.name}</Text>
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                            <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
+                            <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
+                        </View>
                     </View>
+                    {item.lastModified && (
+                        <Text variant="labelSmall" style={styles.draftDate}>
+                            {formatRelativeDate(item.lastModified)}
+                        </Text>
+                    )}
                 </View>
-                {item.lastModified && (
-                    <Text variant="labelSmall" style={styles.draftDate}>
-                        {formatRelativeDate(item.lastModified)}
-                    </Text>
-                )}
-            </View>
-        </TouchableRipple>
+            </TouchableRipple>
+        </Surface>
     );
 });
 
@@ -636,8 +645,15 @@ export default function Files() {
                     else router.replace('/');
                 }} />
                 <Appbar.Content title="Dashboard" titleStyle={{ fontWeight: 'bold' }} />
-                <Appbar.Action icon="cog" onPress={() => router.push('/config?from=dashboard')} />
-                <Appbar.Action icon="refresh" onPress={() => mode === 'assets' ? fetchAssets(true) : fetchFiles(true)} disabled={isLoading} />
+                <Button
+                    icon="cog-outline"
+                    mode="text"
+                    compact
+                    onPress={() => router.push('/config?from=dashboard')}
+                    style={{ marginRight: 12 }}
+                >
+                    Settings
+                </Button>
             </Appbar.Header>
 
             <View style={styles.tabContainer}>

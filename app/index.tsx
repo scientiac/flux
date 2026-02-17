@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 import { useGitHubAuth } from '../hooks/use-github-auth';
 
@@ -176,29 +176,32 @@ export default function Index() {
                         />
                     }
                     renderItem={({ item }) => (
-                        <TouchableRipple
-                            onPress={() => handleRepoSelect(item.full_name)}
-                            rippleColor="rgba(0,0,0,0.1)"
-                            style={styles.ripple}
-                        >
-                            <List.Item
-                                title={item.name}
-                                titleStyle={{ fontWeight: '600' }}
-                                description={item.description || 'No description provided'}
-                                descriptionNumberOfLines={1}
-                                left={props => (
-                                    <View style={styles.iconContainer}>
-                                        <List.Icon
-                                            {...props}
-                                            icon={item.private ? "lock-outline" : "earth"}
-                                            color={item.private ? theme.colors.secondary : theme.colors.primary}
-                                        />
-                                    </View>
-                                )}
-                                right={props => <List.Icon {...props} icon="chevron-right" color={theme.colors.outline} />}
-                                style={styles.listItem}
-                            />
-                        </TouchableRipple>
+                        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.surface }}>
+                            <TouchableRipple
+                                onPress={() => handleRepoSelect(item.full_name)}
+                                rippleColor={theme.colors.onSurfaceVariant + '1F'}
+                                borderless={true}
+                                style={styles.ripple}
+                            >
+                                <List.Item
+                                    title={item.name}
+                                    titleStyle={{ fontWeight: '600' }}
+                                    description={item.description || 'No description provided'}
+                                    descriptionNumberOfLines={1}
+                                    left={props => (
+                                        <View style={styles.iconContainer}>
+                                            <List.Icon
+                                                {...props}
+                                                icon={item.private ? "lock-outline" : "earth"}
+                                                color={item.private ? theme.colors.secondary : theme.colors.primary}
+                                            />
+                                        </View>
+                                    )}
+                                    right={props => <List.Icon {...props} icon="chevron-right" color={theme.colors.outline} />}
+                                    style={[styles.listItem, { borderBottomWidth: 0 }]}
+                                />
+                            </TouchableRipple>
+                        </Surface>
                     )}
                     ListEmptyComponent={
                         <View style={styles.emptyState}>
