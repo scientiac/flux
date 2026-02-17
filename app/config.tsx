@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
@@ -10,6 +10,7 @@ export default function Config() {
     const { config, updateRepoConfig } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
+    const { from } = useLocalSearchParams();
 
     const repoPath = config.repo;
     const currentRepoConfig = repoPath ? config.repoConfigs[repoPath] : null;
@@ -71,7 +72,10 @@ export default function Config() {
             });
             setSnackbarMsg('Settings saved successfully');
             setSnackbarVisible(true);
-            setTimeout(() => router.push('/files'), 1000);
+            setTimeout(() => {
+                if (from === 'dashboard') router.back();
+                else router.replace('/files');
+            }, 1000);
         } catch (e: any) {
             setSnackbarMsg(e.message || 'Validation failed');
             setSnackbarVisible(true);

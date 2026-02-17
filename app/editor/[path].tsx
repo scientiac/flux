@@ -127,7 +127,7 @@ const MemoizedMarkdownImage = React.memo(({ uri, headers, alt, theme }: any) => 
 });
 
 // Sub-component for Assets Manager
-const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | null, assetsDir: string, onInsert: (filename: string) => void }) => {
+const AssetsManager = ({ repoPath, assetsDir, onInsert, pendingAssets = {} }: { repoPath: string | null, assetsDir: string, onInsert: (filename: string) => void, pendingAssets?: { [key: string]: string } }) => {
     const { config, assetCache, setRepoAssetCache } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [githubToken, setGithubToken] = useState<string | null>(null);
@@ -137,7 +137,21 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
     const theme = useTheme();
 
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
-    const assets = repoPath ? (assetCache[repoPath] || []) : [];
+    const serverAssets = repoPath ? (assetCache[repoPath] || []) : [];
+
+    // Merge pending assets
+    const assets = useMemo(() => {
+        const pendingList = Object.entries(pendingAssets).map(([name, uri]) => ({
+            name,
+            path: `${assetsDir}/${name}`,
+            download_url: uri, // Local URI
+            type: 'file',
+            isPending: true
+        }));
+        // Filter out server assets that are being overwritten by pending ones (optional)
+        // or just prepend pending ones
+        return [...pendingList, ...serverAssets];
+    }, [serverAssets, pendingAssets, assetsDir]);
 
     useEffect(() => {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
@@ -251,7 +265,7 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
                 contentContainerStyle={styles.assetsGrid}
                 refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => fetchAssets()} />}
                 renderItem={({ item }) => (
-                    <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant }]}>
+                    <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant, opacity: item.isPending ? 0.6 : 1 }]}>
                         <TouchableOpacity onPress={() => onInsert(item.name)} style={styles.assetThumbContainer}>
                             <Image
                                 source={{ uri: item.download_url, headers }}
@@ -353,6 +367,7 @@ export default function Editor() {
     // Asset Staging
     const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({});
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
+    const [pickedFilename, setPickedFilename] = useState('');
     const [isImageNameVisible, setIsImageNameVisible] = useState(false);
 
     // Commit UI states
@@ -467,7 +482,11 @@ export default function Editor() {
             const { src, alt } = node.attributes;
             let uri = src;
 
-            if (repoPath && repoConfig && !src.startsWith('http')) {
+            // Check pending assets first
+            const filename = src.split('/').pop();
+            if (pendingAssets[filename]) {
+                uri = pendingAssets[filename];
+            } else if (repoPath && repoConfig && !src.startsWith('http')) {
                 const cleanSrc = src.replace(/^\/+/, '');
                 const targetPath = cleanSrc.includes('/') ? cleanSrc : `${repoConfig.assetsDir}/${cleanSrc}`.replace(/^\/+/, '').replace(/\/+/g, '/');
                 uri = `https://api.github.com/repos/${repoPath}/contents/${targetPath}`;
@@ -486,7 +505,7 @@ export default function Editor() {
         softbreak: (node: any, children: any, parent: any, styles: any) => {
             return <PaperText key={node.key}> </PaperText>;
         },
-    }), [repoPath, repoConfig, imageHeaders, theme]);
+    }), [repoPath, repoConfig, imageHeaders, theme, pendingAssets]);
 
 
     const fetchFile = async () => {
@@ -700,6 +719,8 @@ export default function Editor() {
                 { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
             );
             setLastPickedUri(resized.uri);
+            // Use original filename or fallback to timestamp
+            setPickedFilename(asset.fileName || `image_${Date.now()}.jpg`);
             setIsImageNameVisible(true);
         }
     };
@@ -808,6 +829,7 @@ export default function Editor() {
                             repoPath={repoPath}
                             assetsDir={repoConfig?.assetsDir || 'assets'}
                             onInsert={handleInsertAsset}
+                            pendingAssets={pendingAssets}
                         />
                     </View>
                 </SlidingTabContainer>
@@ -818,7 +840,7 @@ export default function Editor() {
                     visible={isImageNameVisible}
                     onDismiss={() => setIsImageNameVisible(false)}
                     onConfirm={confirmImage}
-                    initialValue={`${title.toLowerCase().replace(/\s+/g, '-')}_${Date.now()}.jpg`}
+                    initialValue={pickedFilename}
                 />
 
                 <CommitDialog

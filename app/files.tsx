@@ -636,7 +636,7 @@ export default function Files() {
                     else router.replace('/');
                 }} />
                 <Appbar.Content title="Dashboard" titleStyle={{ fontWeight: 'bold' }} />
-                <Appbar.Action icon="cog" onPress={() => router.push('/config')} />
+                <Appbar.Action icon="cog" onPress={() => router.push('/config?from=dashboard')} />
                 <Appbar.Action icon="refresh" onPress={() => mode === 'assets' ? fetchAssets(true) : fetchFiles(true)} disabled={isLoading} />
             </Appbar.Header>
 
