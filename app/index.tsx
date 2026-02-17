@@ -2,7 +2,7 @@ import axios from 'axios';
 import { useRouter } from 'expo-router';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 import { useGitHubAuth } from '../hooks/use-github-auth';
@@ -31,12 +31,12 @@ export default function Index() {
         }
     }, [isConfigLoading]);
 
-    const fetchRepos = async () => {
+    const fetchRepos = async (isManualRefresh = false) => {
         if (!token) {
             ExpoSplashScreen.hideAsync(); // If no token, show login immediately
             return;
         }
-        setIsFetchingRepos(true);
+        if (isManualRefresh) setIsFetchingRepos(true);
         try {
             const response = await axios.get('https://api.github.com/user/repos', {
                 headers: {
@@ -61,7 +61,7 @@ export default function Index() {
         } catch (error) {
             console.error('Error fetching repos', error);
         } finally {
-            setIsFetchingRepos(false);
+            if (isManualRefresh) setIsFetchingRepos(false);
             ExpoSplashScreen.hideAsync();
         }
     };
@@ -111,9 +111,7 @@ export default function Index() {
     // 1. Initial Launch / Redirecting
     if (isBooting || isConfigLoading || isAuthLoading || (token && !hasAutoRedirected && config.repo && config.repoConfigs && config.repoConfigs[config.repo])) {
         return (
-            <View style={[styles.container, { backgroundColor: theme.colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator size="large" color={theme.colors.primary} />
-            </View>
+            <View style={[styles.container, { backgroundColor: theme.colors.background }]} />
         );
     }
 
@@ -178,7 +176,7 @@ export default function Index() {
                     refreshControl={
                         <RefreshControl
                             refreshing={isFetchingRepos}
-                            onRefresh={fetchRepos}
+                            onRefresh={() => fetchRepos(true)}
                             colors={[theme.colors.primary]}
                             progressBackgroundColor={theme.colors.surface}
                         />
