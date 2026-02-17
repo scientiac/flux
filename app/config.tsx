@@ -16,7 +16,7 @@ export default function Config() {
 
     const [contentDir, setContentDir] = useState(currentRepoConfig?.contentDir || 'content/posts');
     const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'static/assets');
-    const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n");
+    const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++  \ntitle: {{title}}  \ndate: {{date}}  \ntime: {{time}}  \n+++\n\n");
     const [isValidating, setIsValidating] = useState(false);
 
     // Snackbar
@@ -137,7 +137,7 @@ export default function Config() {
                         activeUnderlineColor={theme.colors.primary}
                         left={<TextInput.Icon icon="file-document-edit-outline" style={{ marginTop: 8 }} />}
                     />
-                    <HelperText type="info">Defines the frontmatter for new posts. Use {'{{title}}'} and {'{{date}}'} as placeholders.</HelperText>
+                    <HelperText type="info">Defines the frontmatter for new posts. Use {'{{title}}'}, {'{{date}}'} and {'{{time}}'} as placeholders.</HelperText>
                 </View>
 
                 <Button

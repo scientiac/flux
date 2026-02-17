@@ -433,7 +433,7 @@ export default function Files() {
         const date = new Date().toISOString().split('T')[0];
 
         // Use custom template or fallback
-        let template = repoConfig.postTemplate || "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n";
+        let template = repoConfig.postTemplate || "+++  \ntitle: {{title}}  \ndate: {{date}}  \ntime: {{time}}  \n+++\n\n";
         const time = new Date().toLocaleTimeString('en-GB', { hour12: false });
         template = template.replace(/{{title}}/g, title).replace(/{{date}}/g, date).replace(/{{time}}/g, time);
 
