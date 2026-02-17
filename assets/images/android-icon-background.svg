@@ -9,6 +9,9 @@
    viewBox="0 0 682.66669 682.66669"
    sodipodi:docname="android-icon-background.svg"
    inkscape:version="1.4.3 (fcd0343856, 2026-01-01)"
+   inkscape:export-filename="android-icon-background.png"
+   inkscape:export-xdpi="96"
+   inkscape:export-ydpi="96"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -25,7 +28,7 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:zoom="1.0883789"
-     inkscape:cx="340.87394"
+     inkscape:cx="341.33334"
      inkscape:cy="341.33334"
      inkscape:window-width="1648"
      inkscape:window-height="993"
@@ -45,5 +48,17 @@
   <g
      inkscape:groupmode="layer"
      inkscape:label="Image"
-     id="g1" />
+     id="g1">
+    <g
+       id="g1-5">
+      <rect
+         style="fill:#cde1cf;fill-opacity:0.976471;fill-rule:nonzero;stroke:#000000;stroke-width:0"
+         id="rect1"
+         width="621.216"
+         height="621.216"
+         x="480.6355"
+         y="-32.567616"
+         transform="matrix(1.0989205,0,0,1.0989205,-528.18021,35.789222)" />
+    </g>
+  </g>
 </svg>

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { useRouter } from 'expo-router';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
@@ -25,11 +26,16 @@ export default function Index() {
     useEffect(() => {
         if (!isConfigLoading) {
             setIsBooting(false);
+            // Hide splash screen when config is loaded (or if we are waiting for repo fetch, handle it there)
+            // But main logic: if we are staying on Index, we wait for repos.
         }
     }, [isConfigLoading]);
 
     const fetchRepos = async () => {
-        if (!token) return;
+        if (!token) {
+            ExpoSplashScreen.hideAsync(); // If no token, show login immediately
+            return;
+        }
         setIsFetchingRepos(true);
         try {
             const response = await axios.get('https://api.github.com/user/repos', {
@@ -56,6 +62,7 @@ export default function Index() {
             console.error('Error fetching repos', error);
         } finally {
             setIsFetchingRepos(false);
+            ExpoSplashScreen.hideAsync();
         }
     };
 
@@ -112,6 +119,7 @@ export default function Index() {
 
     // 2. Not Authenticated
     if (!token) {
+        ExpoSplashScreen.hideAsync();
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
                 <View style={styles.centerContent}>

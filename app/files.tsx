@@ -6,6 +6,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
+import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import { Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
@@ -344,7 +345,10 @@ export default function Files() {
             } else {
                 console.error('[Files] Fetch failed', e);
             }
-        } finally { setIsLoading(false); }
+        } finally {
+            setIsLoading(false);
+            ExpoSplashScreen.hideAsync();
+        }
     }, [repoPath, repoConfig, setRepoFileCache]);
 
     const fetchAssets = useCallback(async (isManualRefresh = false) => {
@@ -373,7 +377,10 @@ export default function Files() {
             } else {
                 console.error('[Assets] Fetch failed', e);
             }
-        } finally { setIsLoading(false); }
+        } finally {
+            setIsLoading(false);
+            ExpoSplashScreen.hideAsync();
+        }
     }, [repoPath, repoConfig, setRepoAssetCache]);
 
     useEffect(() => {
@@ -922,7 +929,8 @@ const styles = StyleSheet.create({
     },
     assetName: { fontSize: 11, fontWeight: '500', textAlign: 'center' },
     draftList: {
-        padding: 16,
+        paddingHorizontal: 16,
+        paddingTop: 4,
         paddingBottom: 100,
     },
     draftCardWrapper: {
