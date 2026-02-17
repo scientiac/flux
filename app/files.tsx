@@ -182,7 +182,7 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
                 />
                 <View style={styles.assetOverlay}>
                     <IconButton
-                        icon="pencil"
+                        icon="cursor-text"
                         iconColor="white"
                         size={18}
                         onPress={onRename}
@@ -213,7 +213,7 @@ const DraftItem = memo(({ item, onPress, onDelete, onPublish, onRename }: { item
                 <View style={styles.draftHeader}>
                     <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.title || 'Untitled Draft'}</Text>
                     <View style={{ flexDirection: 'row' }}>
-                        <IconButton icon="pencil-outline" size={20} iconColor={theme.colors.primary} onPress={onRename} />
+                        <IconButton icon="cursor-text" size={20} iconColor={theme.colors.primary} onPress={onRename} />
                         <IconButton icon="cloud-upload-outline" size={20} iconColor={theme.colors.primary} onPress={onPublish} />
                         <IconButton icon="delete-outline" size={20} iconColor={theme.colors.error} onPress={onDelete} />
                     </View>
@@ -234,7 +234,7 @@ const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRen
                 <View style={styles.draftHeader}>
                     <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.name}</Text>
                     <View style={{ flexDirection: 'row' }}>
-                        <IconButton icon="pencil-outline" size={20} iconColor={theme.colors.primary} onPress={onRename} />
+                        <IconButton icon="cursor-text" size={20} iconColor={theme.colors.primary} onPress={onRename} />
                         <IconButton icon="delete-outline" size={20} iconColor={theme.colors.error} onPress={onDelete} />
                     </View>
                 </View>

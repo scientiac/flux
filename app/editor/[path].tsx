@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
 import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, TextInput, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -275,7 +275,7 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert, pendingAssets = {} }: { 
                             />
                             <View style={styles.assetOverlay}>
                                 <IconButton
-                                    icon="pencil"
+                                    icon="cursor-text"
                                     iconColor="white"
                                     size={20}
                                     onPress={() => {
@@ -668,18 +668,12 @@ export default function Editor() {
         }
     };
 
-    const handleSaveLocal = async () => {
+    const handleSaveLocal = async (shouldRedirect = true) => {
         setIsSaving(true);
         try {
             const id = draftId || Date.now().toString();
-            // Try to extract title from content first line if it's # Title
-            let calculatedTitle = title;
-            const titleMatch = content.match(/^#\s+(.+)$/m);
-            if (titleMatch) calculatedTitle = titleMatch[1];
-            else if (content.includes('title:')) {
-                const fmMatch = content.match(/title:\s*(.+)/);
-                if (fmMatch) calculatedTitle = fmMatch[1].replace(/['"]/g, '');
-            }
+            // Use existing title state or fallback
+            let calculatedTitle = title || 'Untitled Draft';
 
             await saveDraft({
                 id,
@@ -692,8 +686,8 @@ export default function Editor() {
             setSnackbarMsg('Draft saved locally');
             setSnackbarVisible(true);
 
-            // If it was a new post being saved as draft, we might want to redirect to the new draft URL
-            if (!isLocalDraft) {
+            // If it was a new post being saved as draft, redirect unless suppressing
+            if (!isLocalDraft && shouldRedirect) {
                 router.replace(`/editor/draft_${id}`);
             }
         } catch (e: any) {
@@ -749,25 +743,74 @@ export default function Editor() {
         setMode('edit');
     };
 
+    const handleBack = useCallback(async () => {
+        // Auto-save if it's a draft
+        if (isLocalDraft || isNew) {
+            await handleSaveLocal(false);
+            // Wait for snackbar to be visible
+            await new Promise(resolve => setTimeout(resolve, 800));
+        }
+        router.back();
+    }, [isLocalDraft, isNew, handleSaveLocal, router]);
+
+    // Handle System Back Button
+    useEffect(() => {
+        const onBackPress = () => {
+            handleBack();
+            return true;
+        };
+
+        const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+        return () => subscription.remove();
+    }, [handleBack]);
+
+    const handleDiscard = async () => {
+        // Clear autosave
+        await AsyncStorage.removeItem(AUTOSAVE_KEY);
+        // Just go back without saving
+        router.back();
+    };
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             style={[styles.container, { backgroundColor: theme.colors.background }]}
         >
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
-                <Appbar.BackAction onPress={() => router.back()} />
+                <Appbar.BackAction onPress={handleBack} />
                 <Appbar.Content title={title || (isLocalDraft ? 'Untitled Draft' : 'New Post')} titleStyle={styles.appbarTitle} />
-                <Appbar.Action
-                    icon={isLocalDraft ? "content-save" : "pencil-box-outline"}
-                    onPress={handleSaveLocal}
+                {(isLocalDraft || isNew) && (
+                    <Button
+                        icon="delete-outline"
+                        mode="text"
+                        onPress={handleDiscard}
+                        textColor={theme.colors.error}
+                        compact
+                    >
+                        Discard
+                    </Button>
+                )}
+                <Button
+                    icon={isLocalDraft ? "content-save-outline" : "file-document-edit-outline"}
+                    mode="text"
+                    onPress={() => handleSaveLocal(true)}
                     disabled={isSaving || isLoading}
-                />
+                    compact
+                    style={!isLocalDraft ? {} : { marginRight: 12 }}
+                >
+                    {isLocalDraft ? "Save" : "Draft"}
+                </Button>
                 {!isLocalDraft && (
-                    <Appbar.Action
+                    <Button
                         icon="cloud-upload-outline"
+                        mode="text"
                         onPress={() => setIsCommitModalVisible(true)}
                         disabled={isSaving || isLoading}
-                    />
+                        compact
+                        style={{ marginRight: 12 }}
+                    >
+                        Publish
+                    </Button>
                 )}
             </Appbar.Header>
 
