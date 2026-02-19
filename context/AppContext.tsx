@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 interface RepoConfig {
     contentDir: string;
@@ -154,24 +154,23 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return () => clearTimeout(timer);
     }, [repoCache, assetCache, isConfigLoading]);
 
-    const updateConfig = async (newFields: Partial<AppConfig>) => {
+    const updateConfig = useCallback(async (newFields: Partial<AppConfig>) => {
         settingsPendingSave.current = true;
         setConfig(prev => ({ ...prev, ...newFields }));
-    };
+    }, []);
 
-    const updateRepoConfig = async (repoPath: string, repoConfig: Partial<RepoConfig>) => {
-        const existingRepoConfig = config.repoConfigs[repoPath] || DEFAULT_REPO_CONFIG;
+    const updateRepoConfig = useCallback(async (repoPath: string, repoConfig: Partial<RepoConfig>) => {
         settingsPendingSave.current = true;
         setConfig(prev => ({
             ...prev,
             repoConfigs: {
                 ...prev.repoConfigs,
-                [repoPath]: { ...existingRepoConfig, ...repoConfig }
+                [repoPath]: { ...(prev.repoConfigs[repoPath] || DEFAULT_REPO_CONFIG), ...repoConfig }
             }
         }));
-    };
+    }, []);
 
-    const removeRepoConfig = async (repoPath: string) => {
+    const removeRepoConfig = useCallback(async (repoPath: string) => {
         settingsPendingSave.current = true;
         setConfig(prev => {
             const newConfigs = { ...prev.repoConfigs };
@@ -197,28 +196,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         } catch (e) {
             console.error('[AppContext] Failed to clear repo data', e);
         }
-    };
+    }, []);
 
-    const setCachedRepos = async (repos: any[]) => {
+    const setCachedRepos = useCallback(async (repos: any[]) => {
         setCachedReposInternal(repos);
         try {
             await AsyncStorage.setItem(REPO_CACHE_KEY, JSON.stringify(repos));
         } catch (e) {
             console.error('[AppContext] Repo cache failed', e);
         }
-    };
+    }, []);
 
-    const setRepoFileCache = async (repoPath: string, files: any[]) => {
+    const setRepoFileCache = useCallback(async (repoPath: string, files: any[]) => {
         cachePendingSave.current[repoPath] = true;
         setRepoCache(prev => ({ ...prev, [repoPath]: files }));
-    };
+    }, []);
 
-    const setRepoAssetCache = async (repoPath: string, assets: any[]) => {
+    const setRepoAssetCache = useCallback(async (repoPath: string, assets: any[]) => {
         cachePendingSave.current[repoPath] = true;
         setAssetCache(prev => ({ ...prev, [repoPath]: assets }));
-    };
+    }, []);
 
-    const saveDraft = async (draft: Draft) => {
+    const saveDraft = useCallback(async (draft: Draft) => {
         setLocalDrafts(prev => {
             const index = prev.findIndex(d => d.id === draft.id);
             let updated;
@@ -231,17 +230,17 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
             return updated;
         });
-    };
+    }, []);
 
-    const deleteDraft = async (draftId: string) => {
+    const deleteDraft = useCallback(async (draftId: string) => {
         setLocalDrafts(prev => {
             const updated = prev.filter(d => d.id !== draftId);
             AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
             return updated;
         });
-    };
+    }, []);
 
-    const resetConfig = async () => {
+    const resetConfig = useCallback(async () => {
         setConfig(DEFAULT_CONFIG);
         setCachedReposInternal([]);
         setRepoCache({});
@@ -249,7 +248,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const keys = await AsyncStorage.getAllKeys();
         const toDelete = keys.filter(k => k.startsWith('flux_'));
         await AsyncStorage.multiRemove(toDelete);
-    };
+    }, []);
 
     const contextValue = useMemo(() => ({
         config,

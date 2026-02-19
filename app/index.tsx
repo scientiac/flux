@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useRouter } from 'expo-router';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
@@ -31,7 +31,7 @@ export default function Index() {
         }
     }, [isConfigLoading]);
 
-    const fetchRepos = async (isManualRefresh = false) => {
+    const fetchRepos = useCallback(async (isManualRefresh = false) => {
         if (!token) {
             ExpoSplashScreen.hideAsync(); // If no token, show login immediately
             return;
@@ -50,8 +50,8 @@ export default function Index() {
 
             // Smart Diff: Light check (length and first item ID)
             const newData = response.data;
-            const hasChanged = newData.length !== cachedRepos.length ||
-                (newData.length > 0 && newData[0].id !== cachedRepos[0]?.id);
+            const hasChanged = newData.length !== (cachedRepos?.length || 0) ||
+                (newData.length > 0 && newData[0].id !== cachedRepos?.[0]?.id);
 
             if (hasChanged) {
                 setRepos(newData);
@@ -64,7 +64,7 @@ export default function Index() {
             if (isManualRefresh) setIsFetchingRepos(false);
             ExpoSplashScreen.hideAsync();
         }
-    };
+    }, [token, cachedRepos, setCachedRepos]);
 
     useEffect(() => {
         if (token) fetchRepos();
@@ -106,7 +106,7 @@ export default function Index() {
         [filteredRepos, config.repoConfigs]
     );
 
-    const handleRepoSelect = async (repoPath: string) => {
+    const handleRepoSelect = useCallback(async (repoPath: string) => {
         const isAlreadyConfigured = !!(config.repoConfigs && config.repoConfigs[repoPath]);
         await updateConfig({ repo: repoPath });
 
@@ -115,7 +115,40 @@ export default function Index() {
         } else {
             router.push('/config');
         }
-    };
+    }, [config.repoConfigs, updateConfig, router]);
+
+    const handleRefresh = useCallback(() => fetchRepos(true), [fetchRepos]);
+
+    const renderRepoItem = useCallback(({ item }: any) => (
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.surface }}>
+            <TouchableRipple
+                onPress={() => handleRepoSelect(item.full_name)}
+                rippleColor={theme.colors.onSurfaceVariant + '1F'}
+                borderless={true}
+                style={styles.ripple}
+            >
+                <List.Item
+                    title={item.name}
+                    titleStyle={{ fontWeight: '600' }}
+                    description={item.description || 'No description provided'}
+                    descriptionNumberOfLines={1}
+                    left={props => (
+                        <View style={styles.iconContainer}>
+                            <List.Icon
+                                {...props}
+                                icon={item.private ? "lock-outline" : "earth"}
+                                color={item.private ? theme.colors.secondary : theme.colors.primary}
+                            />
+                        </View>
+                    )}
+                    right={props => <List.Icon {...props} icon="chevron-right" color={theme.colors.outline} />}
+                    style={[styles.listItem, { borderBottomWidth: 0 }]}
+                />
+            </TouchableRipple>
+        </Surface>
+    ), [handleRepoSelect, theme]);
+
+    const repoKeyExtractor = useCallback((item: any) => item.id.toString(), []);
 
     // 1. Initial Launch / Redirecting
     if (isBooting || isConfigLoading || isAuthLoading || (token && !hasAutoRedirected && config.repo && config.repoConfigs && config.repoConfigs[config.repo])) {
@@ -180,12 +213,12 @@ export default function Index() {
 
                 <FlatList
                     data={unconfiguredRepos}
-                    keyExtractor={(item) => item.id.toString()}
+                    keyExtractor={repoKeyExtractor}
                     contentContainerStyle={{ paddingBottom: 24 }}
                     refreshControl={
                         <RefreshControl
                             refreshing={isFetchingRepos}
-                            onRefresh={() => fetchRepos(true)}
+                            onRefresh={handleRefresh}
                             colors={[theme.colors.primary]}
                             progressBackgroundColor={theme.colors.surface}
                         />
@@ -227,34 +260,7 @@ export default function Index() {
                             )}
                         </View>
                     ) : null}
-                    renderItem={({ item }) => (
-                        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.surface }}>
-                            <TouchableRipple
-                                onPress={() => handleRepoSelect(item.full_name)}
-                                rippleColor={theme.colors.onSurfaceVariant + '1F'}
-                                borderless={true}
-                                style={styles.ripple}
-                            >
-                                <List.Item
-                                    title={item.name}
-                                    titleStyle={{ fontWeight: '600' }}
-                                    description={item.description || 'No description provided'}
-                                    descriptionNumberOfLines={1}
-                                    left={props => (
-                                        <View style={styles.iconContainer}>
-                                            <List.Icon
-                                                {...props}
-                                                icon={item.private ? "lock-outline" : "earth"}
-                                                color={item.private ? theme.colors.secondary : theme.colors.primary}
-                                            />
-                                        </View>
-                                    )}
-                                    right={props => <List.Icon {...props} icon="chevron-right" color={theme.colors.outline} />}
-                                    style={[styles.listItem, { borderBottomWidth: 0 }]}
-                                />
-                            </TouchableRipple>
-                        </Surface>
-                    )}
+                    renderItem={renderRepoItem}
                     ListEmptyComponent={configuredRepos.length === 0 ? (
                         <View style={styles.emptyState}>
                             <Avatar.Icon size={64} icon="database-search" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />

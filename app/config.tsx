@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Appbar, Button, Dialog, Divider, HelperText, Portal, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
@@ -17,7 +17,7 @@ export default function Config() {
 
     const [contentDir, setContentDir] = useState(currentRepoConfig?.contentDir || 'content/posts');
     const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'static/assets');
-    const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++  \ntitle: {{title}}  \ndate: {{date}}  \ntime: {{time}}  \n+++\n\n");
+    const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++\ntitle: {{title}}\ndate: {{date}}\ntime: {{time}}\n+++\n\n");
     const [isValidating, setIsValidating] = useState(false);
 
     // Remove confirmation dialog
@@ -35,7 +35,7 @@ export default function Config() {
         }
     }, [currentRepoConfig]);
 
-    const validateAndSave = async () => {
+    const validateAndSave = useCallback(async () => {
         if (!repoPath) return;
         setIsValidating(true);
         try {
@@ -85,16 +85,16 @@ export default function Config() {
         } finally {
             setIsValidating(false);
         }
-    };
+    }, [repoPath, contentDir, assetsDir, postTemplate, updateRepoConfig, from, router, setSnackbarMsg, setSnackbarVisible]);
 
-    const handleRemoveSite = async () => {
+    const handleRemoveSite = useCallback(async () => {
         if (!repoPath) return;
         setRemoveDialogVisible(false);
         await removeRepoConfig(repoPath);
         setSnackbarMsg('Site removed from Flux');
         setSnackbarVisible(true);
         setTimeout(() => router.replace('/'), 800);
-    };
+    }, [repoPath, removeRepoConfig, setSnackbarMsg, setSnackbarVisible, router]);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>

@@ -4,10 +4,10 @@ import { Buffer } from 'buffer';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import React, { memo, useCallback, useEffect, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, BackHandler, Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -268,6 +268,12 @@ export default function Files() {
     const [mode, setMode] = useState<'posts' | 'drafts' | 'assets'>('posts');
     const selectedIndex = ['posts', 'drafts', 'assets'].indexOf(mode);
 
+    const segmentedButtons = useMemo(() => [
+        { value: 'posts', label: 'Posts', icon: 'file-document-outline' },
+        { value: 'drafts', label: 'Drafts', icon: 'pencil-box-outline' },
+        { value: 'assets', label: 'Assets', icon: 'image-multiple-outline' },
+    ], []);
+
     const repoPath = config.repo;
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
 
@@ -420,7 +426,17 @@ export default function Files() {
         }
     }, [repoPath, mode, fetchFiles, fetchAssets]);
 
-    const handlePublishDraft = async (commitMsg: string) => {
+    // Refresh on focus to ensure newly published posts show up immediately
+    useFocusEffect(
+        useCallback(() => {
+            if (repoPath) {
+                if (mode === 'posts') fetchFiles();
+                else if (mode === 'assets') fetchAssets();
+            }
+        }, [repoPath, mode, fetchFiles, fetchAssets])
+    );
+
+    const handlePublishDraft = useCallback(async (commitMsg: string) => {
         if (!selectedDraft || !repoPath || !repoConfig) return;
         setIsPublishDialogVisible(false);
         setIsLoading(true);
@@ -465,15 +481,15 @@ export default function Files() {
             setIsLoading(false);
             setSelectedDraft(null);
         }
-    };
+    }, [selectedDraft, repoPath, repoConfig, deleteDraft, fetchFiles]);
 
-    const handleAction = async () => {
+    const handleAction = useCallback(() => {
         if (mode === 'posts') setIsNewFileVisible(true);
         else if (mode === 'drafts') setIsNewDraftVisible(true);
         else if (mode === 'assets') pickImage();
-    };
+    }, [mode]);
 
-    const handleCreateDraft = async (title: string) => {
+    const handleCreateDraft = useCallback(async (title: string) => {
         if (!repoConfig) return;
         const id = Date.now().toString();
         const date = new Date().toISOString().split('T')[0];
@@ -492,18 +508,18 @@ export default function Files() {
         });
         setIsNewDraftVisible(false);
         router.push(`/editor/draft_${id}?new=true`);
-    };
+    }, [repoConfig, repoPath, saveDraft, router]);
 
-    const handleCreateFile = async (name: string) => {
+    const handleCreateFile = useCallback(async (name: string) => {
         if (!repoConfig) return;
         const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         const cleanName = `${normalized}.md`;
         const path = `${repoConfig.contentDir}/${cleanName}`;
         setIsNewFileVisible(false);
         router.push(`/editor/${encodeURIComponent(path)}?new=true&title=${encodeURIComponent(name)}`);
-    };
+    }, [repoConfig, router]);
 
-    const handleDeleteFile = async () => {
+    const handleDeleteFile = useCallback(async () => {
         if (!selectedFile || !repoPath) return;
         setIsLoading(true);
         try {
@@ -526,7 +542,7 @@ export default function Files() {
             setIsDeleteVisible(false);
             setSelectedFile(null);
         }
-    };
+    }, [selectedFile, repoPath, files, setRepoFileCache]);
 
     const handleRenameDraft = async (newTitle: string) => {
         if (!selectedDraft || !newTitle) return;
@@ -541,7 +557,7 @@ export default function Files() {
         setSnackbarVisible(true);
     };
 
-    const handleRenameFile = async (newName: string) => {
+    const handleRenameFile = useCallback(async (newName: string) => {
         if (!selectedFile || !newName || !repoPath || !repoConfig) return;
         const cleanName = newName.endsWith('.md') ? newName : `${newName}.md`;
         if (cleanName === selectedFile.name) {
@@ -576,9 +592,9 @@ export default function Files() {
             setIsRenameVisible(false);
             setSelectedFile(null);
         }
-    };
+    }, [selectedFile, repoPath, repoConfig, files, setRepoFileCache]);
 
-    const handleDeleteAsset = async () => {
+    const handleDeleteAsset = useCallback(async () => {
         if (!selectedAsset || !repoPath) return;
         setIsLoading(true);
         try {
@@ -601,7 +617,7 @@ export default function Files() {
             setIsDeleteVisible(false);
             setSelectedAsset(null);
         }
-    };
+    }, [selectedAsset, repoPath, assets, setRepoAssetCache]);
 
     const handleRenameAsset = async (newName: string) => {
         if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
@@ -637,7 +653,7 @@ export default function Files() {
         }
     };
 
-    const pickImage = async () => {
+    const pickImage = useCallback(async () => {
         const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.8 });
         if (!result.canceled) {
             const uri = result.assets[0].uri;
@@ -645,9 +661,9 @@ export default function Files() {
             setPendingImage({ uri, filename });
             setIsImageNameVisible(true);
         }
-    };
+    }, []);
 
-    const confirmUpload = async (filename: string) => {
+    const confirmUpload = useCallback(async (filename: string) => {
         if (!pendingImage || !repoPath || !repoConfig) return;
         setIsImageNameVisible(false);
         setIsLoading(true);
@@ -664,16 +680,51 @@ export default function Files() {
             setSnackbarMsg(`Upload failed: ${e.message}`);
             setSnackbarVisible(true);
         } finally { setIsLoading(false); setPendingImage(null); }
-    };
+    }, [pendingImage, repoPath, repoConfig, fetchAssets]);
 
-    const filteredFiles = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path));
-    const filteredAssets = assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path));
-    const filteredDrafts = localDrafts.filter(d =>
+    const handleRefreshPosts = useCallback(() => fetchFiles(true), [fetchFiles]);
+    const handleRefreshAssets = useCallback(() => fetchAssets(true), [fetchAssets]);
+
+    const postKeyExtractor = useCallback((item: any) => item.sha, []);
+    const assetKeyExtractor = useCallback((item: any) => item.sha, []);
+    const draftKeyExtractor = useCallback((item: any) => item.id, []);
+
+    const assetHeaders = useMemo(() => githubToken ? { Authorization: `token ${githubToken}` } : undefined, [githubToken]);
+
+    const renderPostItem = useCallback(({ item }: any) => (
+        <FileItem
+            item={item}
+            onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
+            onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
+            onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
+        />
+    ), [router]);
+
+    const renderDraftItem = useCallback(({ item }: any) => (
+        <DraftItem
+            item={item}
+            onPress={() => router.push(`/editor/draft_${item.id}`)}
+            onRename={() => { setSelectedDraft(item); setIsRenameDraftVisible(true); }}
+            onPublish={() => { setSelectedDraft(item); setIsPublishDialogVisible(true); }}
+            onDelete={() => { setSelectedDraft(item); setIsDeleteDraftVisible(true); }}
+        />
+    ), [router]);
+
+    const renderAssetItem = useCallback(({ item }: any) => (
+        <AssetItem
+            item={item}
+            headers={assetHeaders}
+            onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
+            onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
+        />
+    ), [assetHeaders]);
+
+    const filteredFiles = useMemo(() => files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path)), [files, searchQuery, tombstones]);
+    const filteredAssets = useMemo(() => assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path)), [assets, searchQuery, tombstones]);
+    const filteredDrafts = useMemo(() => localDrafts.filter(d =>
         (d.title.toLowerCase().includes(searchQuery.toLowerCase()) || d.content.toLowerCase().includes(searchQuery.toLowerCase())) &&
         d.repoPath === repoPath
-    );
-
-    const assetHeaders = githubToken ? { Authorization: `token ${githubToken}` } : undefined;
+    ), [localDrafts, searchQuery, repoPath]);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -702,11 +753,7 @@ export default function Files() {
                 <SegmentedButtons
                     value={mode}
                     onValueChange={(val: any) => { setMode(val); setSearchQuery(''); }}
-                    buttons={[
-                        { value: 'posts', label: 'Posts', icon: 'file-document-outline' },
-                        { value: 'drafts', label: 'Drafts', icon: 'pencil-box-outline' },
-                        { value: 'assets', label: 'Assets', icon: 'image-multiple-outline' },
-                    ]}
+                    buttons={segmentedButtons}
                     style={{ marginHorizontal: 16, marginBottom: 8 }}
                 />
             </View>
@@ -733,25 +780,18 @@ export default function Files() {
                         <View style={{ flex: 1 }}>
                             <FlatList
                                 data={filteredFiles}
-                                keyExtractor={(item) => item.sha}
+                                keyExtractor={postKeyExtractor}
                                 contentContainerStyle={styles.draftList}
                                 refreshControl={
                                     <RefreshControl
-                                        refreshing={isLoading}
-                                        onRefresh={() => fetchFiles(true)}
+                                        refreshing={isLoading && mode === 'posts'}
+                                        onRefresh={handleRefreshPosts}
                                         colors={[theme.colors.primary]}
                                         progressBackgroundColor={theme.colors.surface}
                                     />
                                 }
-                                renderItem={({ item }) => (
-                                    <FileItem
-                                        item={item}
-                                        onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
-                                        onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
-                                        onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
-                                    />
-                                )}
-                                ListEmptyComponent={hasLoadedPosts ? <View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View> : null}
+                                renderItem={renderPostItem}
+                                ListEmptyComponent={hasLoadedPosts ? (<View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View>) : null}
                             />
                         </View>
 
@@ -759,27 +799,9 @@ export default function Files() {
                         <View style={{ flex: 1 }}>
                             <FlatList
                                 data={filteredDrafts}
-                                keyExtractor={(item) => item.id}
-                                numColumns={1}
+                                keyExtractor={draftKeyExtractor}
                                 contentContainerStyle={styles.draftList}
-                                renderItem={({ item }) => (
-                                    <DraftItem
-                                        item={item}
-                                        onPress={() => router.push(`/editor/draft_${item.id}`)}
-                                        onDelete={() => {
-                                            setSelectedDraft(item);
-                                            setIsDeleteDraftVisible(true);
-                                        }}
-                                        onPublish={() => {
-                                            setSelectedDraft(item);
-                                            setIsPublishDialogVisible(true);
-                                        }}
-                                        onRename={() => {
-                                            setSelectedDraft(item);
-                                            setIsRenameDraftVisible(true);
-                                        }}
-                                    />
-                                )}
+                                renderItem={renderDraftItem}
                                 ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="pencil-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No drafts yet.</Text></View>}
                             />
                         </View>
@@ -788,26 +810,20 @@ export default function Files() {
                         <View style={{ flex: 1 }}>
                             <FlatList
                                 data={filteredAssets}
-                                keyExtractor={(item) => item.path}
-                                numColumns={COLUMN_COUNT}
-                                contentContainerStyle={styles.assetGrid}
+                                keyExtractor={assetKeyExtractor}
+                                numColumns={2}
+                                columnWrapperStyle={styles.assetRow}
+                                contentContainerStyle={styles.assetList}
                                 refreshControl={
                                     <RefreshControl
-                                        refreshing={isLoading}
-                                        onRefresh={() => fetchAssets(true)}
+                                        refreshing={isLoading && mode === 'assets'}
+                                        onRefresh={handleRefreshAssets}
                                         colors={[theme.colors.primary]}
                                         progressBackgroundColor={theme.colors.surface}
                                     />
                                 }
-                                renderItem={({ item }) => (
-                                    <AssetItem
-                                        item={item}
-                                        headers={assetHeaders}
-                                        onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
-                                        onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
-                                    />
-                                )}
-                                ListEmptyComponent={hasLoadedAssets ? <View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View> : null}
+                                renderItem={renderAssetItem}
+                                ListEmptyComponent={hasLoadedAssets ? (<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>) : null}
                             />
                         </View>
                     </SlidingTabContainer>
@@ -962,9 +978,13 @@ const styles = StyleSheet.create({
     tabContainer: {
         paddingBottom: 8,
     },
-    assetGrid: {
+    assetList: {
         padding: 8,
         paddingBottom: 100,
+    },
+    assetRow: {
+        justifyContent: 'space-between',
+        paddingHorizontal: 8,
     },
     assetCard: {
         width: ASSET_ITEM_SIZE,
