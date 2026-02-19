@@ -330,7 +330,7 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
 
 
 export default function Editor() {
-    const { path, new: isNewParam } = useLocalSearchParams();
+    const { path, new: isNewParam, title: titleParam } = useLocalSearchParams();
     const isNew = isNewParam === 'true';
     const decodedPath = decodeURIComponent(path as string);
     const isLocalDraft = decodedPath.startsWith('draft_');
@@ -344,7 +344,7 @@ export default function Editor() {
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
 
     const [content, setContent] = useState('');
-    const [title, setTitle] = useState(decodedPath.split('/').pop()?.replace('.md', '') || '');
+    const [title, setTitle] = useState((titleParam as string) || decodedPath.split('/').pop()?.replace('.md', '') || '');
     const [isLoading, setIsLoading] = useState(!isNew);
     const [isSaving, setIsSaving] = useState(false);
     const [sha, setSha] = useState<string | null>(null);
@@ -564,9 +564,9 @@ export default function Editor() {
 
         let cleanPostPath = decodedPath.replace(/^\/+/, '').replace(/\/+/g, '/');
         if (isLocalDraft) {
-            // Use draft title literally as filename
-            const requestedFilename = title;
-            const extFilename = requestedFilename.endsWith('.md') ? requestedFilename : `${requestedFilename}.md`;
+            // Use draft title normalized as filename
+            const normalized = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            const extFilename = `${normalized}.md`;
             cleanPostPath = `${repoConfig.contentDir}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
         }
 
@@ -779,14 +779,14 @@ export default function Editor() {
     };
 
     const handleBack = useCallback(async () => {
-        // Auto-save if it's a draft
-        if (isLocalDraft || isNew) {
+        // Auto-save ONLY if it's a draft
+        if (isLocalDraft) {
             await handleSaveLocal(false);
             // Wait for snackbar to be visible
             await new Promise(resolve => setTimeout(resolve, 800));
         }
         router.back();
-    }, [isLocalDraft, isNew, handleSaveLocal, router]);
+    }, [isLocalDraft, handleSaveLocal, router]);
 
     // Handle System Back Button
     useEffect(() => {
@@ -813,7 +813,10 @@ export default function Editor() {
         >
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
                 <Appbar.BackAction onPress={handleBack} />
-                <Appbar.Content title={title || (isLocalDraft ? 'Untitled Draft' : 'New Post')} titleStyle={styles.appbarTitle} />
+                <Appbar.Content
+                    title={(title ? title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : (isLocalDraft ? 'untitled-draft' : 'new-post')) + '.md'}
+                    titleStyle={styles.appbarTitle}
+                />
                 {(isLocalDraft || isNew) && (
                     <Button
                         icon="delete-outline"

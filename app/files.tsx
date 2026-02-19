@@ -218,7 +218,9 @@ const DraftItem = memo(({ item, onPress, onDelete, onPublish, onRename }: { item
             <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
                 <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
                     <View style={styles.draftHeader}>
-                        <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.title || 'Untitled Draft'}</Text>
+                        <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>
+                            {(item.title ? item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : 'untitled') + '.md'}
+                        </Text>
                         <View style={{ flexDirection: 'row', gap: 4 }}>
                             <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
                             <IconButton mode="contained-tonal" icon="cloud-upload-outline" size={18} iconColor={theme.colors.primary} onPress={onPublish} />
@@ -417,9 +419,9 @@ export default function Files() {
             const token = await SecureStore.getItemAsync('github_access_token');
             if (!token) throw new Error('Not authenticated');
 
-            // Use drafting title literally as filename
-            const requestedFilename = selectedDraft.title;
-            const extFilename = requestedFilename.endsWith('.md') ? requestedFilename : `${requestedFilename}.md`;
+            // Use drafting title normalized as filename
+            const normalized = selectedDraft.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            const extFilename = `${normalized}.md`;
             const cleanPostPath = `${repoConfig.contentDir}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
 
             // Check if file exists to get SHA (prevent "sha wasn't supplied" error)
@@ -485,10 +487,11 @@ export default function Files() {
 
     const handleCreateFile = async (name: string) => {
         if (!repoConfig) return;
-        const cleanName = name.endsWith('.md') ? name : `${name}.md`;
+        const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+        const cleanName = `${normalized}.md`;
         const path = `${repoConfig.contentDir}/${cleanName}`;
         setIsNewFileVisible(false);
-        router.push(`/editor/${encodeURIComponent(path)}?new=true`);
+        router.push(`/editor/${encodeURIComponent(path)}?new=true&title=${encodeURIComponent(name)}`);
     };
 
     const handleDeleteFile = async () => {
