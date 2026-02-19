@@ -3,11 +3,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Button, HelperText, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, Divider, HelperText, Portal, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 
 export default function Config() {
-    const { config, updateRepoConfig } = useAppContext();
+    const { config, updateRepoConfig, removeRepoConfig } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
     const { from } = useLocalSearchParams();
@@ -19,6 +19,9 @@ export default function Config() {
     const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'static/assets');
     const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++  \ntitle: {{title}}  \ndate: {{date}}  \ntime: {{time}}  \n+++\n\n");
     const [isValidating, setIsValidating] = useState(false);
+
+    // Remove confirmation dialog
+    const [removeDialogVisible, setRemoveDialogVisible] = useState(false);
 
     // Snackbar
     const [snackbarVisible, setSnackbarVisible] = useState(false);
@@ -84,6 +87,15 @@ export default function Config() {
         }
     };
 
+    const handleRemoveSite = async () => {
+        if (!repoPath) return;
+        setRemoveDialogVisible(false);
+        await removeRepoConfig(repoPath);
+        setSnackbarMsg('Site removed from Flux');
+        setSnackbarVisible(true);
+        setTimeout(() => router.replace('/'), 800);
+    };
+
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
@@ -92,9 +104,8 @@ export default function Config() {
             </Appbar.Header>
 
             <ScrollView contentContainerStyle={styles.content}>
-                <Text variant="headlineSmall" style={styles.title}>Configure Content Paths</Text>
-                <Text variant="bodyMedium" style={styles.subtitle}>
-                    Settings for <Text style={{ fontWeight: 'bold' }}>{repoPath}</Text>
+                <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.outline }]}>
+                    Settings for <Text style={{ fontWeight: 'bold', color: theme.colors.onBackground }}>{repoPath}</Text>
                 </Text>
 
                 <View style={styles.inputGroup}>
@@ -155,7 +166,45 @@ export default function Config() {
                 >
                     Save & Continue
                 </Button>
+
+                {currentRepoConfig && (
+                    <>
+                        <Divider style={{ marginTop: 40, marginBottom: 24 }} />
+                        <View style={[styles.dangerZone, { backgroundColor: theme.colors.errorContainer, borderColor: theme.colors.error }]}>
+                            <Text variant="titleSmall" style={{ color: theme.colors.onErrorContainer, fontWeight: '700', marginBottom: 4 }}>Remove Site</Text>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onErrorContainer, opacity: 0.8, marginBottom: 16 }}>
+                                This will remove the site configuration, cached files, and drafts from Flux. Your GitHub repository will not be affected.
+                            </Text>
+                            <Button
+                                mode="contained"
+                                onPress={() => setRemoveDialogVisible(true)}
+                                icon="delete-outline"
+                                buttonColor={theme.colors.error}
+                                textColor={theme.colors.onError}
+                                style={{ borderRadius: 20 }}
+                            >
+                                Remove from Flux
+                            </Button>
+                        </View>
+                    </>
+                )}
             </ScrollView>
+
+            <Portal>
+                <Dialog visible={removeDialogVisible} onDismiss={() => setRemoveDialogVisible(false)} style={{ borderRadius: 28 }}>
+                    <Dialog.Icon icon="alert-circle-outline" color={theme.colors.error} />
+                    <Dialog.Title style={{ textAlign: 'center' }}>Remove Site?</Dialog.Title>
+                    <Dialog.Content>
+                        <Text variant="bodyMedium" style={{ textAlign: 'center' }}>
+                            This will remove <Text style={{ fontWeight: 'bold' }}>{repoPath}</Text> from your configured sites, including its cached data and local drafts. This does not delete anything from GitHub.
+                        </Text>
+                    </Dialog.Content>
+                    <Dialog.Actions>
+                        <Button onPress={() => setRemoveDialogVisible(false)}>Cancel</Button>
+                        <Button onPress={handleRemoveSite} textColor={theme.colors.error}>Remove</Button>
+                    </Dialog.Actions>
+                </Dialog>
+            </Portal>
 
             <Snackbar
                 visible={snackbarVisible}
@@ -171,13 +220,18 @@ export default function Config() {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
-    content: { padding: 24 },
-    title: { fontWeight: 'bold', marginBottom: 8 },
-    subtitle: { opacity: 0.7, marginBottom: 32 },
+    content: { padding: 24, paddingBottom: 48 },
+    subtitle: { marginBottom: 24 },
     inputGroup: { marginBottom: 16 },
     capsuleInput: {
         backgroundColor: 'rgba(0,0,0,0.03)',
     },
     saveButton: { marginTop: 24, borderRadius: 28 },
     saveButtonContent: { height: 56 },
+    dangerZone: {
+        padding: 20,
+        borderRadius: 16,
+        borderWidth: 1,
+    },
 });
+

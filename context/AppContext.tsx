@@ -24,6 +24,7 @@ interface AppContextType {
     config: AppConfig;
     updateConfig: (newConfig: Partial<AppConfig>) => Promise<void>;
     updateRepoConfig: (repoPath: string, repoConfig: Partial<RepoConfig>) => Promise<void>;
+    removeRepoConfig: (repoPath: string) => Promise<void>;
     resetConfig: () => Promise<void>;
     isConfigLoading: boolean;
     hasAutoRedirected: boolean;
@@ -170,6 +171,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }));
     };
 
+    const removeRepoConfig = async (repoPath: string) => {
+        settingsPendingSave.current = true;
+        setConfig(prev => {
+            const newConfigs = { ...prev.repoConfigs };
+            delete newConfigs[repoPath];
+            return {
+                ...prev,
+                repo: prev.repo === repoPath ? null : prev.repo,
+                repoConfigs: newConfigs,
+            };
+        });
+        // Clear caches for this repo
+        setRepoCache(prev => { const n = { ...prev }; delete n[repoPath]; return n; });
+        setAssetCache(prev => { const n = { ...prev }; delete n[repoPath]; return n; });
+        try {
+            await AsyncStorage.removeItem(`${FILE_CACHE_PREFIX}${repoPath}`);
+            await AsyncStorage.removeItem(`${ASSET_CACHE_PREFIX}${repoPath}`);
+            // Remove drafts for this repo
+            setLocalDrafts(prev => {
+                const updated = prev.filter(d => d.repoPath !== repoPath);
+                AsyncStorage.setItem(DRAFTS_KEY, JSON.stringify(updated));
+                return updated;
+            });
+        } catch (e) {
+            console.error('[AppContext] Failed to clear repo data', e);
+        }
+    };
+
     const setCachedRepos = async (repos: any[]) => {
         setCachedReposInternal(repos);
         try {
@@ -226,6 +255,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         config,
         updateConfig,
         updateRepoConfig,
+        removeRepoConfig,
         resetConfig,
         isConfigLoading,
         hasAutoRedirected,
