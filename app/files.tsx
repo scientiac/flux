@@ -280,6 +280,8 @@ export default function Files() {
     const [isInitialLoading, setIsInitialLoading] = useState(
         repoPath ? !(repoCache[repoPath]?.length > 0) : false
     );
+    const [hasLoadedPosts, setHasLoadedPosts] = useState(false);
+    const [hasLoadedAssets, setHasLoadedAssets] = useState(false);
 
     const [isNewFileVisible, setIsNewFileVisible] = useState(false);
     const [isNewDraftVisible, setIsNewDraftVisible] = useState(false);
@@ -372,6 +374,7 @@ export default function Files() {
         } finally {
             setIsLoading(false);
             setIsInitialLoading(false);
+            setHasLoadedPosts(true);
             ExpoSplashScreen.hideAsync();
         }
     }, [repoPath, repoConfig, setRepoFileCache]);
@@ -405,6 +408,7 @@ export default function Files() {
         } finally {
             setIsLoading(false);
             setIsInitialLoading(false);
+            setHasLoadedAssets(true);
             ExpoSplashScreen.hideAsync();
         }
     }, [repoPath, repoConfig, setRepoAssetCache]);
@@ -747,7 +751,7 @@ export default function Files() {
                                         onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
                                     />
                                 )}
-                                ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View>}
+                                ListEmptyComponent={hasLoadedPosts ? <View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View> : null}
                             />
                         </View>
 
@@ -803,7 +807,7 @@ export default function Files() {
                                         onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
                                     />
                                 )}
-                                ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>}
+                                ListEmptyComponent={hasLoadedAssets ? <View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View> : null}
                             />
                         </View>
                     </SlidingTabContainer>
