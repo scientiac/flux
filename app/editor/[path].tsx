@@ -857,7 +857,11 @@ export default function Editor() {
                     value={mode}
                     onValueChange={(val: string) => {
                         if (val !== 'edit') Keyboard.dismiss();
-                        if (val === 'preview') setPreviewContent(content);
+                        if (val === 'preview') {
+                            // Strip frontmatter (YAML or TOML) for preview
+                            const clean = content.replace(/^---\s*[\s\S]*?\n---\s*\n?/, '').replace(/^\+\+\+\s*[\s\S]*?\n\+\+\+\s*\n?/, '');
+                            setPreviewContent(clean);
+                        }
                         setMode(val);
                     }}
                     buttons={[
