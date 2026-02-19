@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { useRouter } from 'expo-router';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
@@ -97,6 +97,15 @@ export default function Index() {
         repo.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
 
+    const configuredRepos = useMemo(() =>
+        filteredRepos.filter(repo => !!(config.repoConfigs && config.repoConfigs[repo.full_name])),
+        [filteredRepos, config.repoConfigs]
+    );
+    const unconfiguredRepos = useMemo(() =>
+        filteredRepos.filter(repo => !(config.repoConfigs && config.repoConfigs[repo.full_name])),
+        [filteredRepos, config.repoConfigs]
+    );
+
     const handleRepoSelect = async (repoPath: string) => {
         const isAlreadyConfigured = !!(config.repoConfigs && config.repoConfigs[repoPath]);
         await updateConfig({ repo: repoPath });
@@ -170,7 +179,7 @@ export default function Index() {
                 </View>
 
                 <FlatList
-                    data={filteredRepos}
+                    data={unconfiguredRepos}
                     keyExtractor={(item) => item.id.toString()}
                     contentContainerStyle={{ paddingBottom: 24 }}
                     refreshControl={
@@ -181,6 +190,43 @@ export default function Index() {
                             progressBackgroundColor={theme.colors.surface}
                         />
                     }
+                    ListHeaderComponent={configuredRepos.length > 0 ? (
+                        <View style={{ marginBottom: 8 }}>
+                            <Text variant="labelLarge" style={{ marginHorizontal: 20, marginTop: 8, marginBottom: 8, color: theme.colors.primary, fontWeight: '700', letterSpacing: 0.5 }}>Your Sites</Text>
+                            {configuredRepos.map(item => (
+                                <Surface key={item.id} elevation={2} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.primaryContainer }}>
+                                    <TouchableRipple
+                                        onPress={() => handleRepoSelect(item.full_name)}
+                                        rippleColor={theme.colors.onPrimaryContainer + '1F'}
+                                        borderless={true}
+                                        style={styles.ripple}
+                                    >
+                                        <List.Item
+                                            title={item.name}
+                                            titleStyle={{ fontWeight: '700', color: theme.colors.onPrimaryContainer }}
+                                            description={item.description || 'No description provided'}
+                                            descriptionStyle={{ color: theme.colors.onPrimaryContainer, opacity: 0.7 }}
+                                            descriptionNumberOfLines={1}
+                                            left={props => (
+                                                <View style={styles.iconContainer}>
+                                                    <List.Icon
+                                                        {...props}
+                                                        icon={item.private ? "lock-outline" : "earth"}
+                                                        color={theme.colors.onPrimaryContainer}
+                                                    />
+                                                </View>
+                                            )}
+                                            right={props => <List.Icon {...props} icon="chevron-right" color={theme.colors.onPrimaryContainer} />}
+                                            style={[styles.listItem, { borderBottomWidth: 0 }]}
+                                        />
+                                    </TouchableRipple>
+                                </Surface>
+                            ))}
+                            {unconfiguredRepos.length > 0 && (
+                                <Text variant="labelLarge" style={{ marginHorizontal: 20, marginTop: 16, marginBottom: 4, color: theme.colors.outline, fontWeight: '700', letterSpacing: 0.5 }}>Other Repos</Text>
+                            )}
+                        </View>
+                    ) : null}
                     renderItem={({ item }) => (
                         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.surface }}>
                             <TouchableRipple
@@ -209,12 +255,12 @@ export default function Index() {
                             </TouchableRipple>
                         </Surface>
                     )}
-                    ListEmptyComponent={
+                    ListEmptyComponent={configuredRepos.length === 0 ? (
                         <View style={styles.emptyState}>
                             <Avatar.Icon size={64} icon="database-search" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
                             <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No repositories match your search.</Text>
                         </View>
-                    }
+                    ) : null}
                 />
             </View>
 
