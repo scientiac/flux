@@ -713,8 +713,8 @@ export default function Editor() {
                 { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
             );
             setLastPickedUri(resized.uri);
-            // Use original filename or fallback to timestamp
-            setPickedFilename(asset.fileName || `image_${Date.now()}.jpg`);
+            // Start with blank filename so user can type directly
+            setPickedFilename('');
             setIsImageNameVisible(true);
         }
     };

@@ -860,7 +860,7 @@ export default function Files() {
                     visible={isImageNameVisible}
                     onDismiss={() => setIsImageNameVisible(false)}
                     onConfirm={confirmUpload}
-                    initialValue={pendingImage?.filename || ''}
+                    initialValue={''}
                 />
 
                 <RenameDialog
