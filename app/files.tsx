@@ -8,7 +8,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, BackHandler, Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Dimensions, FlatList, Platform, RefreshControl, StyleSheet, UIManager, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
@@ -16,6 +16,11 @@ import { useAppContext } from '../context/AppContext';
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
 const ASSET_ITEM_SIZE = (width - 48) / COLUMN_COUNT;
+
+// Enable LayoutAnimation on Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Inline sliding tab container
 const SlidingTabContainer = ({ children, selectedIndex }: { children: React.ReactNode[]; selectedIndex: number }) => {
@@ -260,6 +265,26 @@ const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRen
     );
 });
 
+// Sub-component for Directory Item
+const DirItem = memo(({ item, onPress }: { item: any, onPress: () => void }) => {
+    const theme = useTheme();
+    const isBack = item._isBack;
+    return (
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
+            <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
+                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                        <Avatar.Icon size={40} icon={isBack ? 'arrow-up' : 'folder'} style={{ backgroundColor: isBack ? theme.colors.surfaceVariant : theme.colors.primaryContainer }} color={isBack ? theme.colors.onSurfaceVariant : theme.colors.primary} />
+                        <Text variant="titleMedium" numberOfLines={1} style={{ flex: 1, fontWeight: 'bold', color: isBack ? theme.colors.onSurfaceVariant : theme.colors.onSurface }}>{item.name}</Text>
+                        {!isBack && <IconButton icon="chevron-right" size={20} iconColor={theme.colors.onSurfaceVariant} />}
+                    </View>
+                </View>
+            </TouchableRipple>
+        </Surface>
+    );
+});
+
+
 export default function Files() {
     const { config, repoCache, setRepoFileCache, assetCache, setRepoAssetCache, localDrafts, saveDraft, deleteDraft } = useAppContext();
     const theme = useTheme();
@@ -277,6 +302,7 @@ export default function Files() {
     const repoPath = config.repo;
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
 
+    const [currentDir, setCurrentDir] = useState(''); // relative path within contentDir
     const [files, setFiles] = useState<any[]>(repoPath ? (repoCache[repoPath] || []) : []);
     const [assets, setAssets] = useState<any[]>(repoPath ? (assetCache[repoPath] || []) : []);
     const [isLoading, setIsLoading] = useState(false);
@@ -321,15 +347,22 @@ export default function Files() {
 
     useEffect(() => {
         const onBackPress = () => {
+            // If we are inside a subdirectory in posts mode, navigate up
+            if (mode === 'posts' && currentDir) {
+                setFiles([]); // Clear immediately
+                setIsLoading(true);
+                const parentDir = currentDir.includes('/') ? currentDir.substring(0, currentDir.lastIndexOf('/')) : '';
+                setCurrentDir(parentDir);
+                return true;
+            }
             // Prevent going back to repo list. Minimize app or do nothing.
-            // User said: "hitting system back button from the dashboard must not navigate back to repo page"
             BackHandler.exitApp();
             return true;
         };
 
         const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
         return () => subscription.remove();
-    }, []);
+    }, [mode, currentDir]);
 
     const fetchFiles = useCallback(async (isManualRefresh = false) => {
         if (!repoPath || !repoConfig) return;
@@ -343,13 +376,20 @@ export default function Files() {
         }
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const filesResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${repoConfig.contentDir}`, {
+            // Build the full path: contentDir + currentDir
+            const fetchPath = currentDir
+                ? `${repoConfig.contentDir}/${currentDir}`.replace(/\/+/g, '/')
+                : repoConfig.contentDir;
+            const filesResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${fetchPath}`, {
                 headers: {
                     Authorization: `token ${token}`,
                     'Cache-Control': 'no-cache'
                 }
             });
             if (Array.isArray(filesResponse.data)) {
+                // Get directories
+                const dirs = filesResponse.data.filter((f: any) => f.type === 'dir').map((d: any) => ({ ...d, _isDir: true }));
+                // Get markdown files
                 let mdFiles = filesResponse.data.filter((f: any) => f.type === 'file' && f.name.match(/\.(md|markdown)$/i));
 
                 // Fetch commit dates in parallel to show "last modified"
@@ -367,8 +407,10 @@ export default function Files() {
                     return file;
                 }));
 
-                setFiles(mdFiles);
-                await setRepoFileCache(repoPath, mdFiles);
+                // Combine: dirs first, then files
+                const combined = [...dirs, ...mdFiles];
+                setFiles(combined);
+                await setRepoFileCache(repoPath, combined);
             }
         } catch (e: any) {
             if (e.response?.status === 404) {
@@ -383,7 +425,7 @@ export default function Files() {
             setHasLoadedPosts(true);
             ExpoSplashScreen.hideAsync();
         }
-    }, [repoPath, repoConfig, setRepoFileCache]);
+    }, [repoPath, repoConfig, setRepoFileCache, currentDir]);
 
     const fetchAssets = useCallback(async (isManualRefresh = false) => {
         if (!repoPath || !repoConfig) return;
@@ -428,7 +470,7 @@ export default function Files() {
             if (mode === 'posts') fetchFiles();
             else if (mode === 'assets') fetchAssets();
         }
-    }, [repoPath, mode, fetchFiles, fetchAssets]);
+    }, [repoPath, mode, fetchFiles, fetchAssets, currentDir]);
 
     // Refresh on focus to ensure newly published posts show up immediately
     useFocusEffect(
@@ -451,7 +493,11 @@ export default function Files() {
             // Use drafting title normalized as filename
             const normalized = selectedDraft.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
             const extFilename = `${normalized}.md`;
-            const cleanPostPath = `${repoConfig.contentDir}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+            // Publish to current directory if browsing a subdirectory
+            const dirPath = currentDir
+                ? `${repoConfig.contentDir}/${currentDir}`.replace(/\/+/g, '/')
+                : repoConfig.contentDir;
+            const cleanPostPath = `${dirPath}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
 
             // Check if file exists to get SHA (prevent "sha wasn't supplied" error)
             let currentSha = undefined;
@@ -485,7 +531,7 @@ export default function Files() {
             setIsLoading(false);
             setSelectedDraft(null);
         }
-    }, [selectedDraft, repoPath, repoConfig, deleteDraft, fetchFiles]);
+    }, [selectedDraft, repoPath, repoConfig, deleteDraft, fetchFiles, currentDir]);
 
     const handleAction = useCallback(() => {
         if (mode === 'posts') setIsNewFileVisible(true);
@@ -518,10 +564,14 @@ export default function Files() {
         if (!repoConfig) return;
         const normalized = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
         const cleanName = `${normalized}.md`;
-        const path = `${repoConfig.contentDir}/${cleanName}`;
+        // Create in the current directory
+        const dirPath = currentDir
+            ? `${repoConfig.contentDir}/${currentDir}`.replace(/\/+/g, '/')
+            : repoConfig.contentDir;
+        const path = `${dirPath}/${cleanName}`;
         setIsNewFileVisible(false);
         router.push(`/editor/${encodeURIComponent(path)}?new=true&title=${encodeURIComponent(name)}`);
-    }, [repoConfig, router]);
+    }, [repoConfig, router, currentDir]);
 
     const handleDeleteFile = useCallback(async () => {
         if (!selectedFile || !repoPath) return;
@@ -574,7 +624,9 @@ export default function Files() {
             const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
                 headers: { Authorization: `token ${token}` }
             });
-            const newPath = `${repoConfig.contentDir}/${cleanName}`;
+            // Rename within the same directory as the original file
+            const parentDir = selectedFile.path.substring(0, selectedFile.path.lastIndexOf('/'));
+            const newPath = `${parentDir}/${cleanName}`;
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
                 message: `Rename ${selectedFile.name} to ${cleanName}`,
                 content: response.data.content,
@@ -694,20 +746,42 @@ export default function Files() {
     const handleRefreshPosts = useCallback(() => fetchFiles(true), [fetchFiles]);
     const handleRefreshAssets = useCallback(() => fetchAssets(true), [fetchAssets]);
 
-    const postKeyExtractor = useCallback((item: any) => item.sha, []);
+    const postKeyExtractor = useCallback((item: any) => item.path, []);
     const assetKeyExtractor = useCallback((item: any) => item.sha, []);
     const draftKeyExtractor = useCallback((item: any) => item.id, []);
 
     const assetHeaders = useMemo(() => githubToken ? { Authorization: `token ${githubToken}` } : undefined, [githubToken]);
 
-    const renderPostItem = useCallback(({ item }: any) => (
-        <FileItem
-            item={item}
-            onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
-            onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
-            onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
-        />
-    ), [router]);
+    const handleDirPress = useCallback((dirName: string) => {
+        setFiles([]); // Clear immediately to avoid stale content
+        setIsLoading(true);
+        const newDir = currentDir ? `${currentDir}/${dirName}` : dirName;
+        setCurrentDir(newDir);
+    }, [currentDir]);
+
+    const handleNavigateUp = useCallback(() => {
+        setFiles([]); // Clear immediately
+        setIsLoading(true);
+        const parentDir = currentDir.includes('/') ? currentDir.substring(0, currentDir.lastIndexOf('/')) : '';
+        setCurrentDir(parentDir);
+    }, [currentDir]);
+
+    const renderPostItem = useCallback(({ item }: any) => {
+        if (item._isBack) {
+            return <DirItem item={item} onPress={handleNavigateUp} />;
+        }
+        if (item._isDir) {
+            return <DirItem item={item} onPress={() => handleDirPress(item.name)} />;
+        }
+        return (
+            <FileItem
+                item={item}
+                onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
+                onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
+                onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
+            />
+        );
+    }, [router, handleDirPress, handleNavigateUp]);
 
     const renderDraftItem = useCallback(({ item }: any) => (
         <DraftItem
@@ -728,7 +802,18 @@ export default function Files() {
         />
     ), [assetHeaders]);
 
-    const filteredFiles = useMemo(() => files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path)), [files, searchQuery, tombstones]);
+    const filteredFiles = useMemo(() => {
+        const filtered = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path));
+        // Sort: directories first (alphabetical), then files
+        const dirs = filtered.filter(f => f._isDir).sort((a: any, b: any) => a.name.localeCompare(b.name));
+        const posts = filtered.filter(f => !f._isDir);
+        const result = [...dirs, ...posts];
+        // Prepend '..' back entry when inside a subdirectory
+        if (currentDir) {
+            result.unshift({ name: '..', path: '__back__', _isBack: true, _isDir: false });
+        }
+        return result;
+    }, [files, searchQuery, tombstones, currentDir]);
     const filteredAssets = useMemo(() => assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path)), [assets, searchQuery, tombstones]);
     const filteredDrafts = useMemo(() => localDrafts.filter(d =>
         (d.title.toLowerCase().includes(searchQuery.toLowerCase()) || d.content.toLowerCase().includes(searchQuery.toLowerCase())) &&
@@ -761,7 +846,7 @@ export default function Files() {
             <View style={styles.tabContainer}>
                 <SegmentedButtons
                     value={mode}
-                    onValueChange={(val: any) => { setMode(val); setSearchQuery(''); }}
+                    onValueChange={(val: any) => { setMode(val); setSearchQuery(''); setCurrentDir(''); }}
                     buttons={segmentedButtons}
                     style={{ marginHorizontal: 16, marginBottom: 8 }}
                 />
