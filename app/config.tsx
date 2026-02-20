@@ -16,7 +16,8 @@ export default function Config() {
     const currentRepoConfig = repoPath ? config.repoConfigs[repoPath] : null;
 
     const [contentDir, setContentDir] = useState(currentRepoConfig?.contentDir || 'content/posts');
-    const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'static/assets');
+    const [staticDir, setStaticDir] = useState(currentRepoConfig?.staticDir || 'static');
+    const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'assets');
     const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++\ntitle: {{title}}\ndate: {{date}}\ntime: {{time}}\n+++\n\n");
     const [isValidating, setIsValidating] = useState(false);
 
@@ -30,6 +31,7 @@ export default function Config() {
     useEffect(() => {
         if (currentRepoConfig) {
             setContentDir(currentRepoConfig.contentDir);
+            if (currentRepoConfig.staticDir !== undefined) setStaticDir(currentRepoConfig.staticDir);
             setAssetsDir(currentRepoConfig.assetsDir);
             if (currentRepoConfig.postTemplate) setPostTemplate(currentRepoConfig.postTemplate);
         }
@@ -43,11 +45,19 @@ export default function Config() {
             if (!token) throw new Error('Not authenticated');
 
             // Sanitize: strip trailing slashes to prevent // in paths
-            const cleanContentDir = contentDir.endsWith('/') ? contentDir.slice(0, -1) : contentDir;
-            const cleanAssetsDir = assetsDir.endsWith('/') ? assetsDir.slice(0, -1) : assetsDir;
+            const cleanContentDir = contentDir.replace(/^\/+|\/+$/g, '');
+            const cleanStaticDir = staticDir.replace(/^\/+|\/+$/g, '');
+            const cleanAssetsDir = assetsDir.replace(/^\/+|\/+$/g, '');
 
             // 1. Ensure folders exist or create them
-            const dirs = [cleanContentDir, cleanAssetsDir];
+            const dirs = [cleanContentDir];
+            if (cleanStaticDir && cleanAssetsDir) {
+                dirs.push(`${cleanStaticDir}/${cleanAssetsDir}`.replace(/\/+/g, '/'));
+            } else if (cleanStaticDir) {
+                dirs.push(cleanStaticDir);
+            } else if (cleanAssetsDir) {
+                dirs.push(cleanAssetsDir);
+            }
             for (const dir of dirs) {
                 try {
                     await axios.get(`https://api.github.com/repos/${repoPath}/contents/${dir}`, {
@@ -70,6 +80,7 @@ export default function Config() {
 
             await updateRepoConfig(repoPath, {
                 contentDir: cleanContentDir,
+                staticDir: cleanStaticDir,
                 assetsDir: cleanAssetsDir,
                 postTemplate: postTemplate
             });
@@ -125,17 +136,32 @@ export default function Config() {
 
                 <View style={styles.inputGroup}>
                     <TextInput
-                        label="Assets Directory"
+                        label="Static Directory"
+                        value={staticDir}
+                        onChangeText={setStaticDir}
+                        mode="flat"
+                        placeholder="e.g. static"
+                        style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant }]}
+                        selectionColor={theme.colors.primary}
+                        activeUnderlineColor={theme.colors.primary}
+                        left={<TextInput.Icon icon="folder-home-outline" />}
+                    />
+                    <HelperText type="info">The root directory for static files (e.g. 'static' for Zola).</HelperText>
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <TextInput
+                        label="Assets Directory (relative to Static)"
                         value={assetsDir}
                         onChangeText={setAssetsDir}
                         mode="flat"
-                        placeholder="e.g. static/assets"
+                        placeholder="e.g. assets"
                         style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant }]}
                         selectionColor={theme.colors.primary}
                         activeUnderlineColor={theme.colors.primary}
                         left={<TextInput.Icon icon="image-outline" />}
                     />
-                    <HelperText type="info">Where images and media will be uploaded.</HelperText>
+                    <HelperText type="info">Where images will be placed. Markdown links will use this path.</HelperText>
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -159,7 +185,7 @@ export default function Config() {
                     mode="contained"
                     onPress={validateAndSave}
                     loading={isValidating}
-                    disabled={isValidating || !contentDir || !assetsDir}
+                    disabled={isValidating || !contentDir}
                     style={styles.saveButton}
                     contentStyle={styles.saveButtonContent}
                     icon="content-save-outline"

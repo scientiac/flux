@@ -393,7 +393,11 @@ export default function Files() {
         }
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${repoConfig.assetsDir}`, {
+            const cleanStatic = repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '';
+            const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
+            const fullPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
+
+            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${fullPath}`, {
                 headers: {
                     Authorization: `token ${token}`,
                     'Cache-Control': 'no-cache'
@@ -417,7 +421,7 @@ export default function Files() {
             setHasLoadedAssets(true);
             ExpoSplashScreen.hideAsync();
         }
-    }, [repoPath, repoConfig, setRepoAssetCache]);
+    }, [repoPath, repoConfig?.staticDir, repoConfig?.assetsDir, setRepoAssetCache]);
 
     useEffect(() => {
         if (repoPath) {
@@ -623,7 +627,10 @@ export default function Files() {
         if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
         const ext = selectedAsset.name.split('.').pop();
         const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
-        const newPath = `${repoConfig.assetsDir}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+        const cleanStatic = repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '';
+        const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
+        const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
+        const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
@@ -669,8 +676,10 @@ export default function Files() {
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const cleanDir = repoConfig.assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
-            const newPath = `${cleanDir}/${filename}`;
+            const cleanStatic = repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '';
+            const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
+            const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
+            const newPath = [fullAssetsPath, filename].filter(Boolean).join('/');
             const manip = await ImageManipulator.manipulateAsync(pendingImage.uri, [{ resize: { width: 1200 } }], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true });
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, { message: `Upload ${filename}`, content: manip.base64 }, { headers: { Authorization: `token ${token}` } });
             setSnackbarMsg(`Uploaded ${filename}`);

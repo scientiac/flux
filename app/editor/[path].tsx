@@ -127,7 +127,7 @@ const MemoizedMarkdownImage = React.memo(({ uri, headers, alt, theme }: any) => 
 });
 
 // Sub-component for Assets Manager
-const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | null, assetsDir: string, onInsert: (filename: string) => void }) => {
+const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath: string | null, staticDir: string, assetsDir: string, onInsert: (filename: string) => void }) => {
     const { config, assetCache, setRepoAssetCache } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [githubToken, setGithubToken] = useState<string | null>(null);
@@ -137,6 +137,7 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
     const theme = useTheme();
 
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
+    const [fetchError, setFetchError] = useState<string | null>(null);
     const assets = repoPath ? (assetCache[repoPath] || []) : [];
 
     useEffect(() => {
@@ -144,31 +145,45 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
     }, []);
 
     const fetchAssets = useCallback(async (silent = false) => {
-        if (!repoPath || !assetsDir) return;
+        if (!repoPath) return;
         if (!silent && assets.length === 0) setIsLoading(true);
+        setFetchError(null);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const cleanAssetsDir = assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
-            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${cleanAssetsDir}`, {
+            const cleanStatic = staticDir.replace(/^\/+|\/+$/g, '');
+            const cleanAssets = assetsDir.replace(/^\/+|\/+$/g, '');
+            const fullPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
+
+            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${fullPath}`, {
                 headers: {
                     Authorization: `token ${token}`,
                     'Cache-Control': 'no-cache'
                 }
             });
+
+            if (!Array.isArray(response.data)) {
+                throw new Error('Path is not a directory');
+            }
+
             const imageFiles = response.data.filter((f: any) =>
                 f.type === 'file' && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
             );
             await setRepoAssetCache(repoPath, imageFiles);
-        } catch (e) {
-            console.error('[Assets] Fetch failed', e);
+        } catch (e: any) {
+            console.error('[Assets] Fetch failed', e.message);
+            setFetchError(e.response?.status === 404 ? 'Directory not found' : (e.message || 'Fetch failed'));
         } finally {
             setIsLoading(false);
         }
-    }, [repoPath, assetsDir, setRepoAssetCache]);
+    }, [repoPath, staticDir, assetsDir, setRepoAssetCache]);
 
     useEffect(() => {
-        if (repoPath && assetsDir) fetchAssets();
-    }, [repoPath, assetsDir]);
+        if (repoPath) {
+            // Clear current view if repo/path changes radically
+            setRepoAssetCache(repoPath, []);
+            fetchAssets();
+        }
+    }, [repoPath, staticDir, assetsDir]);
 
     const handleDelete = async () => {
         if (!repoPath || !selectedAsset) return;
@@ -195,7 +210,8 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
         if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
         const ext = selectedAsset.name.split('.').pop();
         const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
-        const newPath = `${assetsDir}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+        const fullAssetsPath = [staticDir, assetsDir].filter(Boolean).join('/');
+        const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
 
         setIsLoading(true);
         setRenameVisible(false);
@@ -231,10 +247,12 @@ const AssetsManager = ({ repoPath, assetsDir, onInsert }: { repoPath: string | n
         return <View style={{ flex: 1 }} />;
     }
 
-    if (assets.length === 0) {
+    if (fetchError || assets.length === 0) {
         return (
             <View style={styles.center}>
-                <PaperText style={{ color: theme.colors.onSurfaceVariant }}>No images found in {assetsDir}</PaperText>
+                <PaperText style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}>
+                    {fetchError || `No images found in ${[staticDir, assetsDir].filter(Boolean).join('/') || 'root'}`}
+                </PaperText>
                 <Button mode="text" onPress={() => fetchAssets()} icon="refresh">Refresh</Button>
             </View>
         );
@@ -478,8 +496,29 @@ export default function Editor() {
 
             if (repoPath && repoConfig && !src.startsWith('http')) {
                 const cleanSrc = src.replace(/^\/+/, '');
-                const targetPath = cleanSrc.includes('/') ? cleanSrc : `${repoConfig.assetsDir}/${cleanSrc}`.replace(/^\/+/, '').replace(/\/+/g, '/');
-                uri = `https://api.github.com/repos/${repoPath}/contents/${targetPath}`;
+                // If it's a relative path to assets, prepend staticDir
+                const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
+                const staticPath = repoConfig.staticDir.replace(/^\/+|\/+$/g, '');
+
+                let targetPath = cleanSrc;
+                if (!cleanSrc.includes('/')) {
+                    // Simple filename, use configured paths
+                    targetPath = [staticPath, assetsPath, cleanSrc].filter(Boolean).join('/');
+                } else {
+                    // It has a path. Check if it's already the full path or relative to assets
+                    const parts = cleanSrc.split('/');
+                    const firstPart = parts[0];
+                    const assetsParts = assetsPath.split('/').filter(Boolean);
+                    const firstAssetsPart = assetsParts[0];
+
+                    if (firstAssetsPart && firstPart === firstAssetsPart) {
+                        // Link is like /assets/img.png. Prepend staticDir if needed.
+                        targetPath = [staticPath, cleanSrc].filter(Boolean).join('/');
+                    }
+                    // If it already starts with staticPath, it's a full path, keep it.
+                }
+
+                uri = `https://api.github.com/repos/${repoPath}/contents/${targetPath.replace(/\/+/g, '/')}`;
             }
 
             return (
@@ -689,9 +728,11 @@ export default function Editor() {
         setSnackbarVisible(true);
 
         const finalName = name.includes('.') ? name : `${name}.jpg`;
-        const relativePath = `/${repoConfig.assetsDir}/${finalName}`;
-        const cleanAssetsDir = repoConfig.assetsDir.replace(/^\/+/, '').replace(/\/+/g, '/');
-        const assetPath = `${cleanAssetsDir}/${finalName}`;
+        const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
+        const staticPath = repoConfig.staticDir.replace(/^\/+|\/+$/g, '');
+
+        const relativePath = `/${[assetsPath, finalName].filter(Boolean).join('/')}`;
+        const assetPath = [staticPath, assetsPath, finalName].filter(Boolean).join('/');
 
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
@@ -772,7 +813,8 @@ export default function Editor() {
 
     const handleInsertAsset = (filename: string) => {
         if (!repoConfig) return;
-        const relativePath = `/${repoConfig.assetsDir}/${filename}`;
+        const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
+        const relativePath = `/${[assetsPath, filename].filter(Boolean).join('/')}`;
         const newContent = content.substring(0, selection.start) + `![${filename}](${relativePath})` + content.substring(selection.end);
         setContent(newContent);
         setMode('edit');
@@ -912,7 +954,8 @@ export default function Editor() {
                     <View style={{ flex: 1 }}>
                         <AssetsManager
                             repoPath={repoPath}
-                            assetsDir={repoConfig?.assetsDir || 'assets'}
+                            staticDir={repoConfig?.staticDir || ''}
+                            assetsDir={repoConfig?.assetsDir || ''}
                             onInsert={handleInsertAsset}
                         />
                     </View>
