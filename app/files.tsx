@@ -8,7 +8,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, BackHandler, Dimensions, FlatList, Platform, RefreshControl, StyleSheet, UIManager, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Dimensions, FlatList, Platform, RefreshControl, ScrollView, StyleSheet, UIManager, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
@@ -138,6 +138,81 @@ const NewFileDialog = ({ visible, onDismiss, onCreate, title, label }: { visible
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
                 <Button onPress={() => onCreate(localValue)} disabled={!localValue} mode="contained" style={{ borderRadius: 20 }}>{title.split(' ')[0]}</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
+// Sub-component for New Draft Dialog
+const NewDraftDialog = ({ visible, onDismiss, onCreate, title, repoPath, repoConfig }: { visible: boolean, onDismiss: () => void, onCreate: (title: string, dir: string) => void, title: string, repoPath: string | null, repoConfig: any }) => {
+    const theme = useTheme();
+    const [localTitle, setLocalTitle] = useState('');
+    const [selectedDir, setSelectedDir] = useState('');
+    const [dirs, setDirs] = useState<string[]>([]);
+    const [isLoadingDirs, setIsLoadingDirs] = useState(false);
+
+    useEffect(() => {
+        if (visible) {
+            setLocalTitle('');
+            setSelectedDir('');
+            if (repoPath && repoConfig) fetchDirs();
+        }
+    }, [visible, repoPath, repoConfig]);
+
+    const fetchDirs = async () => {
+        setIsLoadingDirs(true);
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            const res = await axios.get(`https://api.github.com/repos/${repoPath}/git/trees/HEAD?recursive=1`, {
+                headers: { Authorization: `token ${token}` }
+            });
+            const contentDirNode = repoConfig.contentDir.replace(/\/+$/, '');
+            const paths = res.data.tree
+                .filter((node: any) => node.type === 'tree' && node.path.startsWith(contentDirNode + '/'))
+                .map((node: any) => node.path.substring(contentDirNode.length + 1));
+            setDirs(['', ...paths]);
+        } catch (e) {
+            console.error('Failed to fetch dirs', e);
+            setDirs(['']);
+        } finally {
+            setIsLoadingDirs(false);
+        }
+    };
+
+    return (
+        <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28, maxHeight: Dimensions.get('window').height * 0.8 }}>
+            <Dialog.Title>{title}</Dialog.Title>
+            <Dialog.Content>
+                <TextInput
+                    placeholder="Draft Title"
+                    value={localTitle}
+                    onChangeText={setLocalTitle}
+                    mode="flat"
+                    autoFocus
+                    style={[styles.dialogInput, { backgroundColor: theme.colors.surfaceVariant, marginBottom: 16 }]}
+                    selectionColor={theme.colors.primary}
+                    activeUnderlineColor={theme.colors.primary}
+                />
+                <Text variant="labelMedium" style={{ marginBottom: 8, color: theme.colors.outline }}>Select Directory</Text>
+                {isLoadingDirs ? (
+                    <ActivityIndicator size="small" color={theme.colors.primary} style={{ margin: 16 }} />
+                ) : (
+                    <View style={{ maxHeight: 150, borderRadius: 8, overflow: 'hidden', backgroundColor: theme.colors.surfaceVariant }}>
+                        <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+                            {dirs.map((d, i) => (
+                                <TouchableRipple key={i} onPress={() => setSelectedDir(d)} style={{ padding: 12, backgroundColor: selectedDir === d ? theme.colors.primaryContainer : 'transparent' }}>
+                                    <Text style={{ color: selectedDir === d ? theme.colors.onPrimaryContainer : theme.colors.onSurfaceVariant }}>
+                                        {d === '' ? 'Root (Content Directory)' : d}
+                                    </Text>
+                                </TouchableRipple>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
+                <Button onPress={() => onCreate(localTitle, selectedDir)} disabled={!localTitle} mode="contained" style={{ borderRadius: 20 }}>Create</Button>
             </Dialog.Actions>
         </Dialog>
     );
@@ -435,7 +510,7 @@ export default function Files() {
         }
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const cleanStatic = repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '';
+            const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
             const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
             const fullPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
 
@@ -463,7 +538,7 @@ export default function Files() {
             setHasLoadedAssets(true);
             ExpoSplashScreen.hideAsync();
         }
-    }, [repoPath, repoConfig?.staticDir, repoConfig?.assetsDir, setRepoAssetCache]);
+    }, [repoPath, repoConfig?.useStaticFolder, repoConfig?.staticDir, repoConfig?.assetsDir, setRepoAssetCache]);
 
     useEffect(() => {
         if (repoPath) {
@@ -493,11 +568,12 @@ export default function Files() {
             // Use drafting title normalized as filename
             const normalized = selectedDraft.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
             const extFilename = `${normalized}.md`;
-            // Publish to current directory if browsing a subdirectory
-            const dirPath = currentDir
-                ? `${repoConfig.contentDir}/${currentDir}`.replace(/\/+/g, '/')
-                : repoConfig.contentDir;
-            const cleanPostPath = `${dirPath}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+            // Publish to draft's saved directory, fallback to current context, or root
+            const draftDir = selectedDraft.dirPath !== undefined
+                ? `${repoConfig.contentDir}/${selectedDraft.dirPath}`.replace(/\/+/g, '/').replace(/\/$/, '')
+                : (currentDir ? `${repoConfig.contentDir}/${currentDir}` : repoConfig.contentDir).replace(/\/+/g, '/');
+
+            const cleanPostPath = `${draftDir}/${extFilename}`.replace(/^\/+/, '').replace(/\/+/g, '/');
 
             // Check if file exists to get SHA (prevent "sha wasn't supplied" error)
             let currentSha = undefined;
@@ -539,7 +615,7 @@ export default function Files() {
         else if (mode === 'assets') pickImage();
     }, [mode]);
 
-    const handleCreateDraft = useCallback(async (title: string) => {
+    const handleCreateDraft = useCallback(async (title: string, dirPath: string) => {
         if (!repoConfig) return;
         const id = Date.now().toString();
         const date = new Date().toISOString().split('T')[0];
@@ -554,7 +630,8 @@ export default function Files() {
             title: title || 'New Draft',
             content: template,
             lastModified: new Date().toISOString(),
-            repoPath: repoPath || ''
+            repoPath: repoPath || '',
+            dirPath: dirPath || ''
         });
         setIsNewDraftVisible(false);
         router.push(`/editor/draft_${id}?new=true`);
@@ -679,7 +756,7 @@ export default function Files() {
         if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
         const ext = selectedAsset.name.split('.').pop();
         const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
-        const cleanStatic = repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '';
+        const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
         const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
         const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
         const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
@@ -728,7 +805,7 @@ export default function Files() {
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const cleanStatic = repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '';
+            const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
             const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
             const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
             const newPath = [fullAssetsPath, filename].filter(Boolean).join('/');
@@ -741,7 +818,7 @@ export default function Files() {
             setSnackbarMsg(`Upload failed: ${e.message}`);
             setSnackbarVisible(true);
         } finally { setIsLoading(false); setPendingImage(null); }
-    }, [pendingImage, repoPath, repoConfig, fetchAssets]);
+    }, [pendingImage, repoPath, repoConfig?.useStaticFolder, repoConfig?.staticDir, repoConfig?.assetsDir, fetchAssets]);
 
     const handleRefreshPosts = useCallback(() => fetchFiles(true), [fetchFiles]);
     const handleRefreshAssets = useCallback(() => fetchAssets(true), [fetchAssets]);
@@ -885,7 +962,20 @@ export default function Files() {
                                     />
                                 }
                                 renderItem={renderPostItem}
-                                ListEmptyComponent={hasLoadedPosts ? (<View style={styles.emptyState}><Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text></View>) : null}
+                                ListEmptyComponent={
+                                    (hasLoadedPosts && !isLoading) ? (
+                                        <View style={styles.emptyState}>
+                                            <Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
+                                            <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text>
+                                        </View>
+                                    ) : (
+                                        isLoading ? (
+                                            <View style={[styles.emptyState, { minHeight: 200 }]}>
+                                                <ActivityIndicator size="large" color={theme.colors.primary} />
+                                            </View>
+                                        ) : null
+                                    )
+                                }
                             />
                         </View>
 
@@ -933,12 +1023,13 @@ export default function Files() {
                     label="Filename"
                 />
 
-                <NewFileDialog
+                <NewDraftDialog
                     visible={isNewDraftVisible}
                     onDismiss={() => setIsNewDraftVisible(false)}
                     onCreate={handleCreateDraft}
                     title="New Draft"
-                    label="Draft Title"
+                    repoPath={repoPath}
+                    repoConfig={repoConfig}
                 />
 
                 <ImageNameDialog

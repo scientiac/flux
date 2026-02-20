@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Button, Dialog, Divider, HelperText, Portal, Snackbar, Text, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, Divider, HelperText, Portal, Snackbar, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 
 export default function Config() {
@@ -16,6 +16,7 @@ export default function Config() {
     const currentRepoConfig = repoPath ? config.repoConfigs[repoPath] : null;
 
     const [contentDir, setContentDir] = useState(currentRepoConfig?.contentDir || 'content/posts');
+    const [useStaticFolder, setUseStaticFolder] = useState(currentRepoConfig?.useStaticFolder ?? true);
     const [staticDir, setStaticDir] = useState(currentRepoConfig?.staticDir || 'static');
     const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'assets');
     const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++\ntitle: {{title}}\ndate: {{date}}\ntime: {{time}}\n+++\n\n");
@@ -31,6 +32,7 @@ export default function Config() {
     useEffect(() => {
         if (currentRepoConfig) {
             setContentDir(currentRepoConfig.contentDir);
+            setUseStaticFolder(currentRepoConfig.useStaticFolder ?? true);
             if (currentRepoConfig.staticDir !== undefined) setStaticDir(currentRepoConfig.staticDir);
             setAssetsDir(currentRepoConfig.assetsDir);
             if (currentRepoConfig.postTemplate) setPostTemplate(currentRepoConfig.postTemplate);
@@ -51,9 +53,9 @@ export default function Config() {
 
             // 1. Ensure folders exist or create them
             const dirs = [cleanContentDir];
-            if (cleanStaticDir && cleanAssetsDir) {
+            if (useStaticFolder && cleanStaticDir && cleanAssetsDir) {
                 dirs.push(`${cleanStaticDir}/${cleanAssetsDir}`.replace(/\/+/g, '/'));
-            } else if (cleanStaticDir) {
+            } else if (useStaticFolder && cleanStaticDir) {
                 dirs.push(cleanStaticDir);
             } else if (cleanAssetsDir) {
                 dirs.push(cleanAssetsDir);
@@ -80,6 +82,7 @@ export default function Config() {
 
             await updateRepoConfig(repoPath, {
                 contentDir: cleanContentDir,
+                useStaticFolder,
                 staticDir: cleanStaticDir,
                 assetsDir: cleanAssetsDir,
                 postTemplate: postTemplate
@@ -96,7 +99,7 @@ export default function Config() {
         } finally {
             setIsValidating(false);
         }
-    }, [repoPath, contentDir, assetsDir, postTemplate, updateRepoConfig, from, router, setSnackbarMsg, setSnackbarVisible]);
+    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, updateRepoConfig, from, router]);
 
     const handleRemoveSite = useCallback(async () => {
         if (!repoPath) return;
@@ -134,24 +137,36 @@ export default function Config() {
                     <HelperText type="info">Where your markdown files are stored.</HelperText>
                 </View>
 
-                <View style={styles.inputGroup}>
-                    <TextInput
-                        label="Static Directory"
-                        value={staticDir}
-                        onChangeText={setStaticDir}
-                        mode="flat"
-                        placeholder="e.g. static"
-                        style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant }]}
-                        selectionColor={theme.colors.primary}
-                        activeUnderlineColor={theme.colors.primary}
-                        left={<TextInput.Icon icon="folder-home-outline" />}
-                    />
-                    <HelperText type="info">The root directory for static files (e.g. 'static' for Zola).</HelperText>
+                <View style={[styles.inputGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }]}>
+                    <View style={{ flex: 1, paddingRight: 16 }}>
+                        <Text variant="titleMedium" style={{ color: theme.colors.onBackground, fontWeight: '600' }}>Use Static Directory</Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 4 }}>
+                            Separate content and assets using a framework-like static directory (e.g., Next.js, Zola). Disable for flat Markdown folders (e.g., Obsidian).
+                        </Text>
+                    </View>
+                    <Switch value={useStaticFolder} onValueChange={setUseStaticFolder} />
                 </View>
+
+                {useStaticFolder && (
+                    <View style={styles.inputGroup}>
+                        <TextInput
+                            label="Static Directory"
+                            value={staticDir}
+                            onChangeText={setStaticDir}
+                            mode="flat"
+                            placeholder="e.g. static"
+                            style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant }]}
+                            selectionColor={theme.colors.primary}
+                            activeUnderlineColor={theme.colors.primary}
+                            left={<TextInput.Icon icon="folder-home-outline" />}
+                        />
+                        <HelperText type="info">The root directory for static files (e.g. 'static' for Zola).</HelperText>
+                    </View>
+                )}
 
                 <View style={styles.inputGroup}>
                     <TextInput
-                        label="Assets Directory (relative to Static)"
+                        label={useStaticFolder ? "Assets Directory (relative to Static)" : "Assets Directory (relative to root)"}
                         value={assetsDir}
                         onChangeText={setAssetsDir}
                         mode="flat"

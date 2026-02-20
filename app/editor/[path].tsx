@@ -150,7 +150,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
         setFetchError(null);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const cleanStatic = staticDir.replace(/^\/+|\/+$/g, '');
+            const cleanStatic = repoConfig && repoConfig.useStaticFolder !== false ? staticDir.replace(/^\/+|\/+$/g, '') : '';
             const cleanAssets = assetsDir.replace(/^\/+|\/+$/g, '');
             const fullPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
 
@@ -175,7 +175,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
         } finally {
             setIsLoading(false);
         }
-    }, [repoPath, staticDir, assetsDir, setRepoAssetCache]);
+    }, [repoPath, repoConfig?.useStaticFolder, staticDir, assetsDir, setRepoAssetCache]);
 
     useEffect(() => {
         if (repoPath) {
@@ -183,7 +183,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
             setRepoAssetCache(repoPath, []);
             fetchAssets();
         }
-    }, [repoPath, staticDir, assetsDir]);
+    }, [repoPath, repoConfig?.useStaticFolder, staticDir, assetsDir]);
 
     const handleDelete = async () => {
         if (!repoPath || !selectedAsset) return;
@@ -210,7 +210,9 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
         if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
         const ext = selectedAsset.name.split('.').pop();
         const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
-        const fullAssetsPath = [staticDir, assetsDir].filter(Boolean).join('/');
+        const cleanStatic = repoConfig.useStaticFolder !== false ? staticDir.replace(/^\/+|\/+$/g, '') : '';
+        const cleanAssets = assetsDir.replace(/^\/+|\/+$/g, '');
+        const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
         const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
 
         setIsLoading(true);
@@ -498,7 +500,7 @@ export default function Editor() {
                 const cleanSrc = src.replace(/^\/+/, '');
                 // If it's a relative path to assets, prepend staticDir
                 const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
-                const staticPath = repoConfig.staticDir.replace(/^\/+|\/+$/g, '');
+                const staticPath = repoConfig.useStaticFolder !== false ? repoConfig.staticDir.replace(/^\/+|\/+$/g, '') : '';
 
                 let targetPath = cleanSrc;
                 if (!cleanSrc.includes('/')) {
@@ -675,12 +677,30 @@ export default function Editor() {
             // Use existing title state or fallback
             let calculatedTitle = title || 'Untitled Draft';
 
+            let currentDirPath: string | undefined = undefined;
+            if (isLocalDraft && draftId) {
+                const existingDraft = localDrafts.find(d => d.id === draftId);
+                currentDirPath = existingDraft?.dirPath;
+            } else if (repoConfig && repoPath) {
+                const contentDir = repoConfig.contentDir.replace(/\/+$/, '');
+                if (decodedPath.startsWith(contentDir + '/')) {
+                    const relativePath = decodedPath.substring(contentDir.length + 1);
+                    const lastSlash = relativePath.lastIndexOf('/');
+                    if (lastSlash > -1) {
+                        currentDirPath = relativePath.substring(0, lastSlash);
+                    } else {
+                        currentDirPath = '';
+                    }
+                }
+            }
+
             await saveDraft({
                 id,
                 title: calculatedTitle || 'Untitled Draft',
                 content,
                 lastModified: new Date().toISOString(),
-                repoPath: repoPath || ''
+                repoPath: repoPath || '',
+                dirPath: currentDirPath
             });
 
             setSnackbarMsg('Draft saved locally');
@@ -729,7 +749,7 @@ export default function Editor() {
 
         const finalName = name.includes('.') ? name : `${name}.jpg`;
         const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
-        const staticPath = repoConfig.staticDir.replace(/^\/+|\/+$/g, '');
+        const staticPath = repoConfig.useStaticFolder !== false ? repoConfig.staticDir.replace(/^\/+|\/+$/g, '') : '';
 
         const relativePath = `/${[assetsPath, finalName].filter(Boolean).join('/')}`;
         const assetPath = [staticPath, assetsPath, finalName].filter(Boolean).join('/');
