@@ -109,13 +109,13 @@ export default function Config() {
     }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, showAdvancedFiles, updateRepoConfig, from, router]);
 
     const handleBack = useCallback(() => {
-        if (from === 'dashboard') {
-            router.replace('/files?notice=no_changes');
+        if (!currentRepoConfig) {
+            router.replace('/');
         } else {
             router.replace('/files?notice=no_changes');
         }
         return true;
-    }, [from, router]);
+    }, [currentRepoConfig, router]);
 
     useEffect(() => {
         const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);

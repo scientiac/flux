@@ -1137,7 +1137,7 @@ export default function Files() {
             <FAB
                 icon={mode === 'assets' ? 'upload' : 'plus'}
                 label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Image'}
-                style={styles.fab}
+                style={[styles.fab, !repoConfig?.siteUrl && { right: 16 }]}
                 onPress={handleAction}
             />
 
