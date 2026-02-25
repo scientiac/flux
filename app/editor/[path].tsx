@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
@@ -186,7 +187,8 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
     }, [repoPath, repoConfig?.useStaticFolder, staticDir, assetsDir]);
 
     const handleDelete = async () => {
-        if (!repoPath || !selectedAsset) return;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        if (!selectedAsset || !repoPath) return;
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
@@ -862,6 +864,7 @@ export default function Editor() {
     }, [handleBack]);
 
     const handleDiscard = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         // Clear autosave
         await AsyncStorage.removeItem(AUTOSAVE_KEY);
         // Just go back without saving

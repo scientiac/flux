@@ -1,14 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, BackHandler, Dimensions, FlatList, Linking, Platform, RefreshControl, ScrollView, StyleSheet, UIManager, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Dimensions, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
@@ -18,9 +19,7 @@ const COLUMN_COUNT = 2;
 const ASSET_ITEM_SIZE = (width - 48) / COLUMN_COUNT;
 
 // Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+
 
 // Inline sliding tab container
 const SlidingTabContainer = ({ children, selectedIndex }: { children: React.ReactNode[]; selectedIndex: number }) => {
@@ -364,6 +363,7 @@ export default function Files() {
     const { config, repoCache, setRepoFileCache, assetCache, setRepoAssetCache, localDrafts, saveDraft, deleteDraft } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
+    const { notice } = useLocalSearchParams();
 
     const [mode, setMode] = useState<'posts' | 'drafts' | 'assets'>('posts');
     const selectedIndex = ['posts', 'drafts', 'assets'].indexOf(mode);
@@ -384,9 +384,6 @@ export default function Files() {
     const [githubToken, setGithubToken] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
-    const [isInitialLoading, setIsInitialLoading] = useState(
-        repoPath ? !(repoCache[repoPath]?.length > 0) : false
-    );
     const [hasLoadedPosts, setHasLoadedPosts] = useState(false);
     const [hasLoadedAssets, setHasLoadedAssets] = useState(false);
 
@@ -412,6 +409,13 @@ export default function Files() {
     useEffect(() => {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
     }, []);
+
+    useEffect(() => {
+        if (notice === 'no_changes') {
+            // Clear the notice param by replacing the current route without it
+            router.replace('/files');
+        }
+    }, [notice, router]);
 
     // Sync assets from cache (e.g. from Editor updates)
     useEffect(() => {
@@ -464,11 +468,11 @@ export default function Files() {
             if (Array.isArray(filesResponse.data)) {
                 // Get directories
                 const dirs = filesResponse.data.filter((f: any) => f.type === 'dir').map((d: any) => ({ ...d, _isDir: true }));
-                // Get markdown files
-                let mdFiles = filesResponse.data.filter((f: any) => f.type === 'file' && f.name.match(/\.(md|markdown)$/i));
+                // Get all files (including hidden and non-markdown)
+                let allFiles = filesResponse.data.filter((f: any) => f.type === 'file');
 
                 // Fetch commit dates in parallel to show "last modified"
-                mdFiles = await Promise.all(mdFiles.map(async (file: any) => {
+                allFiles = await Promise.all(allFiles.map(async (file: any) => {
                     try {
                         const commitRes = await axios.get(`https://api.github.com/repos/${repoPath}/commits?path=${encodeURIComponent(file.path)}&per_page=1`, {
                             headers: { Authorization: `token ${token}` }
@@ -483,7 +487,7 @@ export default function Files() {
                 }));
 
                 // Combine: dirs first, then files
-                const combined = [...dirs, ...mdFiles];
+                const combined = [...dirs, ...allFiles];
                 setFiles(combined);
                 await setRepoFileCache(repoPath, combined);
             }
@@ -496,7 +500,6 @@ export default function Files() {
             }
         } finally {
             setIsLoading(false);
-            setIsInitialLoading(false);
             setHasLoadedPosts(true);
             ExpoSplashScreen.hideAsync();
         }
@@ -534,7 +537,6 @@ export default function Files() {
             }
         } finally {
             setIsLoading(false);
-            setIsInitialLoading(false);
             setHasLoadedAssets(true);
             ExpoSplashScreen.hideAsync();
         }
@@ -651,6 +653,7 @@ export default function Files() {
     }, [repoConfig, router, currentDir]);
 
     const handleDeleteFile = useCallback(async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         if (!selectedFile || !repoPath) return;
         setIsLoading(true);
         try {
@@ -665,6 +668,30 @@ export default function Files() {
             await setRepoFileCache(repoPath, updated);
             setSnackbarMsg(`${selectedFile.name} deleted`);
             setSnackbarVisible(true);
+
+            // Auto-remove empty parent directory
+            const parentDir = selectedFile.path.substring(0, selectedFile.path.lastIndexOf('/'));
+            if (parentDir) {
+                try {
+                    const parentRes = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${parentDir}`, {
+                        headers: { Authorization: `token ${token}`, 'Cache-Control': 'no-cache' }
+                    });
+                    if (Array.isArray(parentRes.data) && parentRes.data.length === 0) {
+                        // Directory is empty — GitHub auto-removes it, but if there's a .gitkeep, delete it
+                    } else if (Array.isArray(parentRes.data) && parentRes.data.length === 1 && parentRes.data[0].name === '.gitkeep') {
+                        await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${parentRes.data[0].path}`, {
+                            headers: { Authorization: `token ${token}` },
+                            data: { message: `Remove empty directory ${parentDir}`, sha: parentRes.data[0].sha }
+                        });
+                        // Remove the directory from the file list if we're viewing its parent
+                        const dirName = parentDir.split('/').pop();
+                        setFiles(prev => prev.filter(f => !(f._isDir && f.name === dirName)));
+                    }
+                } catch (dirErr: any) {
+                    // Not critical — just log it
+                    console.log('[Files] Empty dir cleanup skipped', dirErr.message);
+                }
+            }
         } catch (e: any) {
             setSnackbarMsg(`Delete failed: ${e.message}`);
             setSnackbarVisible(true);
@@ -690,7 +717,9 @@ export default function Files() {
 
     const handleRenameFile = useCallback(async (newName: string) => {
         if (!selectedFile || !newName || !repoPath || !repoConfig) return;
-        const cleanName = newName.endsWith('.md') ? newName : `${newName}.md`;
+        // Preserve the original extension if the user doesn't provide one
+        const originalExt = selectedFile.name.includes('.') ? selectedFile.name.substring(selectedFile.name.lastIndexOf('.')) : '';
+        const cleanName = newName.includes('.') ? newName : `${newName}${originalExt}`;
         if (cleanName === selectedFile.name) {
             setIsRenameVisible(false);
             return;
@@ -728,6 +757,7 @@ export default function Files() {
     }, [selectedFile, repoPath, repoConfig, files, setRepoFileCache]);
 
     const handleDeleteAsset = useCallback(async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         if (!selectedAsset || !repoPath) return;
         setIsLoading(true);
         try {
@@ -757,7 +787,7 @@ export default function Files() {
         const ext = selectedAsset.name.split('.').pop();
         const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
         const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
-        const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
+        const cleanAssets = repoConfig.useStaticFolder !== false ? (repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '') : '';
         const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
         const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
         setIsLoading(true);
@@ -843,6 +873,10 @@ export default function Files() {
         setCurrentDir(parentDir);
     }, [currentDir]);
 
+    const isEditableFile = useCallback((name: string) => {
+        return /\.(md|markdown|txt|json|yaml|yml|toml|html|css|js|ts|tsx|jsx|xml|csv|ini|cfg|conf|sh|bash|zsh|py|rb|go|rs|java|kt|c|cpp|h|hpp|gitignore|env|log)$/i.test(name) || !name.includes('.');
+    }, []);
+
     const renderPostItem = useCallback(({ item }: any) => {
         if (item._isBack) {
             return <DirItem item={item} onPress={handleNavigateUp} />;
@@ -850,15 +884,19 @@ export default function Files() {
         if (item._isDir) {
             return <DirItem item={item} onPress={() => handleDirPress(item.name)} />;
         }
+        const canEdit = isEditableFile(item.name);
         return (
             <FileItem
                 item={item}
-                onPress={() => router.push(`/editor/${encodeURIComponent(item.path)}`)}
+                onPress={canEdit
+                    ? () => router.push(`/editor/${encodeURIComponent(item.path)}`)
+                    : () => { setSnackbarMsg(`Cannot edit binary file: ${item.name}`); setSnackbarVisible(true); }
+                }
                 onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
                 onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
             />
         );
-    }, [router, handleDirPress, handleNavigateUp]);
+    }, [router, handleDirPress, handleNavigateUp, isEditableFile]);
 
     const renderDraftItem = useCallback(({ item }: any) => (
         <DraftItem
@@ -880,7 +918,12 @@ export default function Files() {
     ), [assetHeaders]);
 
     const filteredFiles = useMemo(() => {
-        const filtered = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path));
+        let filtered = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path));
+        // Apply file visibility settings
+        if (!repoConfig?.showAdvancedFiles) {
+            // Only show markdown files and directories, and hide dotfiles
+            filtered = filtered.filter(f => (f._isDir || f.name.match(/\.(md|markdown)$/i)) && !f.name.startsWith('.'));
+        }
         // Sort: directories first (alphabetical), then files
         const dirs = filtered.filter(f => f._isDir).sort((a: any, b: any) => a.name.localeCompare(b.name));
         const posts = filtered.filter(f => !f._isDir);
@@ -890,7 +933,7 @@ export default function Files() {
             result.unshift({ name: '..', path: '__back__', _isBack: true, _isDir: false });
         }
         return result;
-    }, [files, searchQuery, tombstones, currentDir]);
+    }, [files, searchQuery, tombstones, currentDir, repoConfig?.showAdvancedFiles]);
     const filteredAssets = useMemo(() => assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path)), [assets, searchQuery, tombstones]);
     const filteredDrafts = useMemo(() => localDrafts.filter(d =>
         (d.title.toLowerCase().includes(searchQuery.toLowerCase()) || d.content.toLowerCase().includes(searchQuery.toLowerCase())) &&
@@ -941,77 +984,65 @@ export default function Files() {
             </View>
 
             <View style={styles.content}>
-                {isInitialLoading ? (
-                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                <SlidingTabContainer selectedIndex={selectedIndex}>
+                    {/* Posts Tab */}
+                    <View style={{ flex: 1 }}>
+                        <FlatList
+                            data={filteredFiles}
+                            keyExtractor={postKeyExtractor}
+                            contentContainerStyle={styles.draftList}
+                            refreshControl={
+                                <RefreshControl
+                                    refreshing={isLoading && mode === 'posts'}
+                                    onRefresh={handleRefreshPosts}
+                                    colors={[theme.colors.primary]}
+                                    progressBackgroundColor={theme.colors.surface}
+                                />
+                            }
+                            renderItem={renderPostItem}
+                            ListEmptyComponent={
+                                (hasLoadedPosts && !isLoading) ? (
+                                    <View style={styles.emptyState}>
+                                        <Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
+                                        <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text>
+                                    </View>
+                                ) : null
+                            }
+                        />
                     </View>
-                ) : (
-                    <SlidingTabContainer selectedIndex={selectedIndex}>
-                        {/* Posts Tab */}
-                        <View style={{ flex: 1 }}>
-                            <FlatList
-                                data={filteredFiles}
-                                keyExtractor={postKeyExtractor}
-                                contentContainerStyle={styles.draftList}
-                                refreshControl={
-                                    <RefreshControl
-                                        refreshing={isLoading && mode === 'posts'}
-                                        onRefresh={handleRefreshPosts}
-                                        colors={[theme.colors.primary]}
-                                        progressBackgroundColor={theme.colors.surface}
-                                    />
-                                }
-                                renderItem={renderPostItem}
-                                ListEmptyComponent={
-                                    (hasLoadedPosts && !isLoading) ? (
-                                        <View style={styles.emptyState}>
-                                            <Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
-                                            <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text>
-                                        </View>
-                                    ) : (
-                                        isLoading ? (
-                                            <View style={[styles.emptyState, { minHeight: 200 }]}>
-                                                <ActivityIndicator size="large" color={theme.colors.primary} />
-                                            </View>
-                                        ) : null
-                                    )
-                                }
-                            />
-                        </View>
 
-                        {/* Drafts Tab */}
-                        <View style={{ flex: 1 }}>
-                            <FlatList
-                                data={filteredDrafts}
-                                keyExtractor={draftKeyExtractor}
-                                contentContainerStyle={styles.draftList}
-                                renderItem={renderDraftItem}
-                                ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="pencil-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No drafts yet.</Text></View>}
-                            />
-                        </View>
+                    {/* Drafts Tab */}
+                    <View style={{ flex: 1 }}>
+                        <FlatList
+                            data={filteredDrafts}
+                            keyExtractor={draftKeyExtractor}
+                            contentContainerStyle={styles.draftList}
+                            renderItem={renderDraftItem}
+                            ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="pencil-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No drafts yet.</Text></View>}
+                        />
+                    </View>
 
-                        {/* Assets Tab */}
-                        <View style={{ flex: 1 }}>
-                            <FlatList
-                                data={filteredAssets}
-                                keyExtractor={assetKeyExtractor}
-                                numColumns={2}
-                                columnWrapperStyle={styles.assetRow}
-                                contentContainerStyle={styles.assetList}
-                                refreshControl={
-                                    <RefreshControl
-                                        refreshing={isLoading && mode === 'assets'}
-                                        onRefresh={handleRefreshAssets}
-                                        colors={[theme.colors.primary]}
-                                        progressBackgroundColor={theme.colors.surface}
-                                    />
-                                }
-                                renderItem={renderAssetItem}
-                                ListEmptyComponent={hasLoadedAssets ? (<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>) : null}
-                            />
-                        </View>
-                    </SlidingTabContainer>
-                )}
+                    {/* Assets Tab */}
+                    <View style={{ flex: 1 }}>
+                        <FlatList
+                            data={filteredAssets}
+                            keyExtractor={assetKeyExtractor}
+                            numColumns={2}
+                            columnWrapperStyle={styles.assetRow}
+                            contentContainerStyle={styles.assetList}
+                            refreshControl={
+                                <RefreshControl
+                                    refreshing={isLoading && mode === 'assets'}
+                                    onRefresh={handleRefreshAssets}
+                                    colors={[theme.colors.primary]}
+                                    progressBackgroundColor={theme.colors.surface}
+                                />
+                            }
+                            renderItem={renderAssetItem}
+                            ListEmptyComponent={hasLoadedAssets ? (<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>) : null}
+                        />
+                    </View>
+                </SlidingTabContainer>
             </View>
 
             <Portal>
@@ -1074,6 +1105,7 @@ export default function Files() {
                         <Button onPress={() => setIsDeleteDraftVisible(false)}>Cancel</Button>
                         <Button
                             onPress={async () => {
+                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                                 if (selectedDraft) await deleteDraft(selectedDraft.id);
                                 setIsDeleteDraftVisible(false);
                                 setSelectedDraft(null);
@@ -1114,6 +1146,10 @@ export default function Files() {
                     icon="web"
                     style={styles.fabSecondary}
                     onPress={() => Linking.openURL(repoConfig.siteUrl!)}
+                    onLongPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                        Linking.openURL(`https://github.com/${repoPath}`);
+                    }}
                 />
             ) : null}
         </View >

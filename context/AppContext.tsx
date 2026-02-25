@@ -8,6 +8,7 @@ interface RepoConfig {
     assetsDir: string;
     postTemplate: string;
     siteUrl?: string;
+    showAdvancedFiles?: boolean;
 }
 
 interface AppConfig {

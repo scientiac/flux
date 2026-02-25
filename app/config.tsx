@@ -1,8 +1,9 @@
 import axios from 'axios';
+import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { BackHandler, ScrollView, StyleSheet, View } from 'react-native';
 import { Appbar, Button, Dialog, HelperText, Portal, Snackbar, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 
@@ -21,6 +22,7 @@ export default function Config() {
     const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'assets');
     const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++\ntitle: {{title}}\ndate: {{date}}\ntime: {{time}}\n+++\n\n");
     const [siteUrl, setSiteUrl] = useState(currentRepoConfig?.siteUrl || '');
+    const [showAdvancedFiles, setShowAdvancedFiles] = useState(currentRepoConfig?.showAdvancedFiles ?? false);
     const [isValidating, setIsValidating] = useState(false);
 
     // Remove confirmation dialog
@@ -38,6 +40,7 @@ export default function Config() {
             setAssetsDir(currentRepoConfig.assetsDir);
             if (currentRepoConfig.postTemplate) setPostTemplate(currentRepoConfig.postTemplate);
             setSiteUrl(currentRepoConfig.siteUrl || '');
+            setShowAdvancedFiles(currentRepoConfig.showAdvancedFiles ?? false);
         }
     }, [currentRepoConfig]);
 
@@ -88,7 +91,8 @@ export default function Config() {
                 staticDir: cleanStaticDir,
                 assetsDir: cleanAssetsDir,
                 postTemplate: postTemplate,
-                siteUrl: siteUrl.trim()
+                siteUrl: siteUrl.trim(),
+                showAdvancedFiles
             });
             setSnackbarMsg('Settings saved successfully');
             setSnackbarVisible(true);
@@ -102,9 +106,24 @@ export default function Config() {
         } finally {
             setIsValidating(false);
         }
-    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, updateRepoConfig, from, router]);
+    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, showAdvancedFiles, updateRepoConfig, from, router]);
+
+    const handleBack = useCallback(() => {
+        if (from === 'dashboard') {
+            router.replace('/files?notice=no_changes');
+        } else {
+            router.replace('/files?notice=no_changes');
+        }
+        return true;
+    }, [from, router]);
+
+    useEffect(() => {
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', handleBack);
+        return () => backHandler.remove();
+    }, [handleBack]);
 
     const handleRemoveSite = useCallback(async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         if (!repoPath) return;
         setRemoveDialogVisible(false);
         await removeRepoConfig(repoPath);
@@ -116,7 +135,7 @@ export default function Config() {
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
-                <Appbar.BackAction onPress={() => router.back()} />
+                <Appbar.BackAction onPress={handleBack} />
                 <Appbar.Content title="Site Settings" titleStyle={{ fontWeight: 'bold' }} />
                 {currentRepoConfig && (
                     <Button
@@ -236,6 +255,16 @@ export default function Config() {
                         left={<TextInput.Icon icon="file-document-edit-outline" style={{ marginTop: 8 }} />}
                     />
                     <HelperText type="info">Defines the frontmatter for new posts. Use {'{{title}}'}, {'{{date}}'} and {'{{time}}'} as placeholders.</HelperText>
+                </View>
+
+                <View style={[styles.inputGroup, { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }]}>
+                    <View style={{ flex: 1, paddingRight: 16 }}>
+                        <Text variant="titleMedium" style={{ color: theme.colors.onBackground, fontWeight: '600' }}>Show All Files</Text>
+                        <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 4 }}>
+                            Show non-markdown and hidden files (e.g. config, scripts, .gitignore) in the Posts tab. They can be renamed and deleted.
+                        </Text>
+                    </View>
+                    <Switch value={showAdvancedFiles} onValueChange={setShowAdvancedFiles} />
                 </View>
 
 
