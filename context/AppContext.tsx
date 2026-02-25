@@ -7,6 +7,7 @@ interface RepoConfig {
     staticDir: string;
     assetsDir: string;
     postTemplate: string;
+    siteUrl?: string;
 }
 
 interface AppConfig {

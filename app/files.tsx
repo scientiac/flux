@@ -8,7 +8,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, BackHandler, Dimensions, FlatList, Platform, RefreshControl, ScrollView, StyleSheet, UIManager, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Dimensions, FlatList, Linking, Platform, RefreshControl, ScrollView, StyleSheet, UIManager, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
@@ -1108,6 +1108,14 @@ export default function Files() {
                 style={styles.fab}
                 onPress={handleAction}
             />
+
+            {repoConfig?.siteUrl ? (
+                <FAB
+                    icon="web"
+                    style={styles.fabSecondary}
+                    onPress={() => Linking.openURL(repoConfig.siteUrl!)}
+                />
+            ) : null}
         </View >
     );
 }
@@ -1152,6 +1160,15 @@ const styles = StyleSheet.create({
     listItemSubtitle: { fontSize: 13, opacity: 0.6, marginTop: 2 },
     emptyState: { flex: 1, padding: 64, alignItems: 'center', justifyContent: 'center' },
     fab: {
+        position: 'absolute',
+        margin: 16,
+        right: 96,
+        bottom: 16,
+        borderRadius: 16,
+        paddingHorizontal: 8,
+        elevation: 4,
+    },
+    fabSecondary: {
         position: 'absolute',
         margin: 16,
         right: 16,

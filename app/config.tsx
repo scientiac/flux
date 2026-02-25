@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Button, Dialog, Divider, HelperText, Portal, Snackbar, Switch, Text, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, HelperText, Portal, Snackbar, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 
 export default function Config() {
@@ -20,6 +20,7 @@ export default function Config() {
     const [staticDir, setStaticDir] = useState(currentRepoConfig?.staticDir || 'static');
     const [assetsDir, setAssetsDir] = useState(currentRepoConfig?.assetsDir || 'assets');
     const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++\ntitle: {{title}}\ndate: {{date}}\ntime: {{time}}\n+++\n\n");
+    const [siteUrl, setSiteUrl] = useState(currentRepoConfig?.siteUrl || '');
     const [isValidating, setIsValidating] = useState(false);
 
     // Remove confirmation dialog
@@ -36,6 +37,7 @@ export default function Config() {
             if (currentRepoConfig.staticDir !== undefined) setStaticDir(currentRepoConfig.staticDir);
             setAssetsDir(currentRepoConfig.assetsDir);
             if (currentRepoConfig.postTemplate) setPostTemplate(currentRepoConfig.postTemplate);
+            setSiteUrl(currentRepoConfig.siteUrl || '');
         }
     }, [currentRepoConfig]);
 
@@ -85,7 +87,8 @@ export default function Config() {
                 useStaticFolder,
                 staticDir: cleanStaticDir,
                 assetsDir: cleanAssetsDir,
-                postTemplate: postTemplate
+                postTemplate: postTemplate,
+                siteUrl: siteUrl.trim()
             });
             setSnackbarMsg('Settings saved successfully');
             setSnackbarVisible(true);
@@ -99,7 +102,7 @@ export default function Config() {
         } finally {
             setIsValidating(false);
         }
-    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, updateRepoConfig, from, router]);
+    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, updateRepoConfig, from, router]);
 
     const handleRemoveSite = useCallback(async () => {
         if (!repoPath) return;
@@ -115,12 +118,51 @@ export default function Config() {
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
                 <Appbar.BackAction onPress={() => router.back()} />
                 <Appbar.Content title="Site Settings" titleStyle={{ fontWeight: 'bold' }} />
+                {currentRepoConfig && (
+                    <Button
+                        icon="delete-outline"
+                        mode="text"
+                        onPress={() => setRemoveDialogVisible(true)}
+                        textColor={theme.colors.error}
+                        compact
+                    >
+                        Remove
+                    </Button>
+                )}
+                <Button
+                    icon="content-save-outline"
+                    mode="text"
+                    onPress={validateAndSave}
+                    disabled={isValidating || !contentDir}
+                    loading={isValidating}
+                    compact
+                    style={{ marginRight: 12 }}
+                >
+                    Save
+                </Button>
             </Appbar.Header>
 
             <ScrollView contentContainerStyle={styles.content}>
                 <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.outline }]}>
                     Settings for <Text style={{ fontWeight: 'bold', color: theme.colors.onBackground }}>{repoPath}</Text>
                 </Text>
+
+                <View style={styles.inputGroup}>
+                    <TextInput
+                        label="Site URL"
+                        value={siteUrl}
+                        onChangeText={setSiteUrl}
+                        mode="flat"
+                        placeholder="e.g. https://example.com"
+                        keyboardType="url"
+                        autoCapitalize="none"
+                        style={[styles.capsuleInput, { backgroundColor: theme.colors.surfaceVariant }]}
+                        selectionColor={theme.colors.primary}
+                        activeUnderlineColor={theme.colors.primary}
+                        left={<TextInput.Icon icon="web" />}
+                    />
+                    <HelperText type="info">Your site's public URL. Used for quick access from the dashboard.</HelperText>
+                </View>
 
                 <View style={styles.inputGroup}>
                     <TextInput
@@ -196,39 +238,7 @@ export default function Config() {
                     <HelperText type="info">Defines the frontmatter for new posts. Use {'{{title}}'}, {'{{date}}'} and {'{{time}}'} as placeholders.</HelperText>
                 </View>
 
-                <Button
-                    mode="contained"
-                    onPress={validateAndSave}
-                    loading={isValidating}
-                    disabled={isValidating || !contentDir}
-                    style={styles.saveButton}
-                    contentStyle={styles.saveButtonContent}
-                    icon="content-save-outline"
-                >
-                    Save & Continue
-                </Button>
 
-                {currentRepoConfig && (
-                    <>
-                        <Divider style={{ marginTop: 40, marginBottom: 24 }} />
-                        <View style={[styles.dangerZone, { backgroundColor: theme.colors.errorContainer, borderColor: theme.colors.error }]}>
-                            <Text variant="titleSmall" style={{ color: theme.colors.onErrorContainer, fontWeight: '700', marginBottom: 4 }}>Remove Site</Text>
-                            <Text variant="bodySmall" style={{ color: theme.colors.onErrorContainer, opacity: 0.8, marginBottom: 16 }}>
-                                This will remove the site configuration, cached files, and drafts from Flux. Your GitHub repository will not be affected.
-                            </Text>
-                            <Button
-                                mode="contained"
-                                onPress={() => setRemoveDialogVisible(true)}
-                                icon="delete-outline"
-                                buttonColor={theme.colors.error}
-                                textColor={theme.colors.onError}
-                                style={{ borderRadius: 20 }}
-                            >
-                                Remove from Flux
-                            </Button>
-                        </View>
-                    </>
-                )}
             </ScrollView>
 
             <Portal>
@@ -266,13 +276,6 @@ const styles = StyleSheet.create({
     inputGroup: { marginBottom: 16 },
     capsuleInput: {
         backgroundColor: 'rgba(0,0,0,0.03)',
-    },
-    saveButton: { marginTop: 24, borderRadius: 28 },
-    saveButtonContent: { height: 56 },
-    dangerZone: {
-        padding: 20,
-        borderRadius: 16,
-        borderWidth: 1,
     },
 });
 
