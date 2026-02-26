@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Dimensions, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -353,7 +353,14 @@ const DirItem = memo(({ item, onPress, onRename }: { item: any, onPress: () => v
                         </Text>
                         <View style={{ flexDirection: 'row', gap: 4 }}>
                             {!isBack && onRename && (
-                                <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
+                                <IconButton
+                                    mode="contained-tonal"
+                                    icon="cursor-text"
+                                    size={18}
+                                    iconColor={theme.colors.primary}
+                                    containerColor={theme.colors.surface}
+                                    onPress={onRename}
+                                />
                             )}
                             <IconButton
                                 mode="contained-tonal"
@@ -416,7 +423,10 @@ export default function Files() {
     const [selectedDraft, setSelectedDraft] = useState<any>(null);
     const [isDeleteDraftVisible, setIsDeleteDraftVisible] = useState(false);
     const [isRenameDraftVisible, setIsRenameDraftVisible] = useState(false);
+    const [isRefreshing, setIsRefreshing] = useState(false);
     const [tombstones, setTombstones] = useState<Set<string>>(new Set());
+    const activePathRef = useRef<string | null>(null);
+    const activeAssetPathRef = useRef<string | null>(null);
 
     useEffect(() => {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
@@ -457,26 +467,36 @@ export default function Files() {
 
     const fetchFiles = useCallback(async (isManualRefresh = false) => {
         if (!repoPath || !repoConfig) return;
+
+        // Build the full path: contentDir + currentDir
+        const requestedPath = currentDir
+            ? `${repoConfig.contentDir}/${currentDir}`.replace(/\/+/g, '/')
+            : repoConfig.contentDir;
+
+        activePathRef.current = requestedPath;
+
         if (isManualRefresh) {
-            setIsLoading(true);
+            setIsRefreshing(true);
             setTombstones(new Set());
             // Clear all local autosaves related to this repo to force fresh fetch
             const allKeys = await AsyncStorage.getAllKeys();
             const repoAutosaves = allKeys.filter((k: string) => k.startsWith('flux_draft_') && k.includes(encodeURIComponent(repoConfig.contentDir)));
             if (repoAutosaves.length > 0) await AsyncStorage.multiRemove(repoAutosaves);
+        } else {
+            setIsLoading(true);
         }
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            // Build the full path: contentDir + currentDir
-            const fetchPath = currentDir
-                ? `${repoConfig.contentDir}/${currentDir}`.replace(/\/+/g, '/')
-                : repoConfig.contentDir;
-            const filesResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${fetchPath}`, {
+            const filesResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${requestedPath}`, {
                 headers: {
                     Authorization: `token ${token}`,
                     'Cache-Control': 'no-cache'
                 }
             });
+
+            // If path has changed since request started, ignore result
+            if (activePathRef.current !== requestedPath) return;
+
             if (Array.isArray(filesResponse.data)) {
                 // Get directories
                 const dirs = filesResponse.data.filter((f: any) => f.type === 'dir').map((d: any) => ({ ...d, _isDir: true }));
@@ -512,6 +532,7 @@ export default function Files() {
             }
         } finally {
             setIsLoading(false);
+            setIsRefreshing(false);
             setHasLoadedPosts(true);
             ExpoSplashScreen.hideAsync();
         }
@@ -519,22 +540,30 @@ export default function Files() {
 
     const fetchAssets = useCallback(async (isManualRefresh = false) => {
         if (!repoPath || !repoConfig) return;
+
+        const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
+        const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
+        const requestedPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
+
+        activeAssetPathRef.current = requestedPath;
+
         if (isManualRefresh) {
-            setIsLoading(true);
+            setIsRefreshing(true);
             setTombstones(new Set());
+        } else {
+            setIsLoading(true);
         }
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
-            const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
-            const fullPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
-
-            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${fullPath}`, {
+            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${requestedPath}`, {
                 headers: {
                     Authorization: `token ${token}`,
                     'Cache-Control': 'no-cache'
                 }
             });
+
+            if (activeAssetPathRef.current !== requestedPath) return;
+
             if (Array.isArray(response.data)) {
                 const imageFiles = response.data.filter((f: any) => f.type === 'file' && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i));
                 setAssets(imageFiles);
@@ -549,6 +578,7 @@ export default function Files() {
             }
         } finally {
             setIsLoading(false);
+            setIsRefreshing(false);
             setHasLoadedAssets(true);
             ExpoSplashScreen.hideAsync();
         }
@@ -1041,7 +1071,7 @@ export default function Files() {
         const result = [...dirs, ...posts];
         // Prepend '..' back entry when inside a subdirectory
         if (currentDir) {
-            result.unshift({ name: '..', path: '__back__', _isBack: true, _isDir: false });
+            result.unshift({ name: '(back)', path: '__back__', _isBack: true, _isDir: false });
         }
         return result;
     }, [files, searchQuery, tombstones, currentDir, repoConfig?.showAdvancedFiles]);
@@ -1104,20 +1134,31 @@ export default function Files() {
                             contentContainerStyle={styles.draftList}
                             refreshControl={
                                 <RefreshControl
-                                    refreshing={isLoading && mode === 'posts'}
+                                    refreshing={isRefreshing && mode === 'posts'}
                                     onRefresh={handleRefreshPosts}
                                     colors={[theme.colors.primary]}
                                     progressBackgroundColor={theme.colors.surface}
                                 />
                             }
                             renderItem={renderPostItem}
+                            ListFooterComponent={
+                                (isLoading && filteredFiles.length > 0) ? (
+                                    <View style={{ padding: 16, alignItems: 'center' }}>
+                                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                                    </View>
+                                ) : null
+                            }
                             ListEmptyComponent={
-                                (hasLoadedPosts && !isLoading) ? (
+                                isLoading ? (
+                                    <View style={styles.emptyState}>
+                                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                                    </View>
+                                ) : (hasLoadedPosts ? (
                                     <View style={styles.emptyState}>
                                         <Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
                                         <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No posts found.</Text>
                                     </View>
-                                ) : null
+                                ) : null)
                             }
                         />
                     </View>
@@ -1143,14 +1184,32 @@ export default function Files() {
                             contentContainerStyle={styles.assetList}
                             refreshControl={
                                 <RefreshControl
-                                    refreshing={isLoading && mode === 'assets'}
+                                    refreshing={isRefreshing && mode === 'assets'}
                                     onRefresh={handleRefreshAssets}
                                     colors={[theme.colors.primary]}
                                     progressBackgroundColor={theme.colors.surface}
                                 />
                             }
                             renderItem={renderAssetItem}
-                            ListEmptyComponent={hasLoadedAssets ? (<View style={styles.emptyState}><Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text></View>) : null}
+                            ListFooterComponent={
+                                (isLoading && filteredAssets.length > 0) ? (
+                                    <View style={{ padding: 16, alignItems: 'center', width: Dimensions.get('window').width }}>
+                                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                                    </View>
+                                ) : null
+                            }
+                            ListEmptyComponent={
+                                isLoading ? (
+                                    <View style={styles.emptyState}>
+                                        <ActivityIndicator size="large" color={theme.colors.primary} />
+                                    </View>
+                                ) : (hasLoadedAssets ? (
+                                    <View style={styles.emptyState}>
+                                        <Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
+                                        <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No assets found.</Text>
+                                    </View>
+                                ) : null)
+                            }
                         />
                     </View>
                 </SlidingTabContainer>
