@@ -575,7 +575,7 @@ export default function Editor() {
         },
         code_block: {
             fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
-            backgroundColor: theme.colors.surfaceVariant,
+            backgroundColor: theme.dark ? 'rgba(255, 255, 255, 0.08)' : theme.colors.surfaceVariant,
             color: theme.colors.onSurfaceVariant,
             padding: 16,
             borderRadius: 12,
@@ -583,6 +583,26 @@ export default function Editor() {
             marginVertical: 16,
             borderWidth: 1,
             borderColor: theme.colors.outlineVariant,
+        },
+        fence: {
+            fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
+            backgroundColor: theme.dark ? 'rgba(255, 255, 255, 0.08)' : theme.colors.surfaceVariant,
+            color: theme.colors.onSurfaceVariant,
+            padding: 16,
+            borderRadius: 12,
+            fontSize: 14,
+            marginVertical: 16,
+            borderWidth: 1,
+            borderColor: theme.colors.outlineVariant,
+        },
+        code_inline: {
+            fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
+            backgroundColor: theme.dark ? 'rgba(255, 255, 255, 0.12)' : theme.colors.surfaceVariant,
+            color: theme.colors.secondary,
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 6,
+            fontSize: 14,
         },
         table: {
             borderWidth: 1,
@@ -605,14 +625,6 @@ export default function Editor() {
         td: {
             padding: 12,
             flex: 1,
-        },
-        code_inline: {
-            fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
-            backgroundColor: theme.colors.surfaceVariant,
-            color: theme.colors.primary,
-            borderRadius: 4,
-            paddingHorizontal: 4,
-            fontSize: 14,
         },
         strong: {
             fontWeight: 'bold',
