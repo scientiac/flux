@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -62,6 +63,77 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
                 <Button onPress={() => onConfirm(localValue)}>Add to Post</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
+// Sub-component for Link/Mention Dialog
+const LinkMentionDialog = ({ visible, onDismiss, onConfirm }: { visible: boolean, onDismiss: () => void, onConfirm: (url: string, text: string, type: string) => void }) => {
+    const [url, setUrl] = useState('');
+    const [text, setText] = useState('');
+    const [type, setType] = useState('mention');
+
+    useEffect(() => {
+        if (visible) {
+            const checkClipboard = async () => {
+                try {
+                    const hasString = await Clipboard.hasStringAsync();
+                    if (hasString) {
+                        const content = await Clipboard.getStringAsync();
+                        if (content.match(/^https?:\/\//i)) {
+                            setUrl(content);
+                        } else {
+                            setUrl('');
+                        }
+                    } else {
+                        setUrl('');
+                    }
+                } catch (e) {
+                    console.error('Clipboard check failed', e);
+                    setUrl('');
+                }
+                setText('');
+                setType('mention');
+            };
+            checkClipboard();
+        }
+    }, [visible]);
+
+    return (
+        <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
+            <Dialog.Title>Add Link / Mention</Dialog.Title>
+            <Dialog.Content>
+                <SegmentedButtons
+                    value={type}
+                    onValueChange={setType}
+                    buttons={[
+                        { value: 'mention', label: 'Mention', icon: 'link' },
+                        { value: 'like', label: 'Like', icon: 'heart-outline' },
+                        { value: 'reply', label: 'Reply', icon: 'reply' },
+                    ]}
+                    style={{ marginBottom: 16 }}
+                />
+                <TextInput
+                    label="URL"
+                    value={url}
+                    onChangeText={setUrl}
+                    mode="outlined"
+                    style={{ marginBottom: 12 }}
+                    autoCapitalize="none"
+                    keyboardType="url"
+                />
+                <TextInput
+                    label="Display Text"
+                    value={text}
+                    onChangeText={setText}
+                    mode="outlined"
+                    placeholder="Optional for mentions"
+                />
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
+                <Button mode="contained" onPress={() => onConfirm(url, text, type)} disabled={!url} style={{ borderRadius: 20 }}>Insert</Button>
             </Dialog.Actions>
         </Dialog>
     );
@@ -508,6 +580,7 @@ export default function Editor() {
 
     // Commit UI states
     const [isCommitModalVisible, setIsCommitModalVisible] = useState(false);
+    const [isLinkModalVisible, setIsLinkModalVisible] = useState(false);
 
     const [githubToken, setGithubToken] = useState<string | null>(null);
 
@@ -894,6 +967,22 @@ export default function Editor() {
         }
     };
 
+    const confirmLink = (url: string, text: string, type: string) => {
+        setIsLinkModalVisible(false);
+        let linkStr = '';
+        if (type === 'mention') {
+            linkStr = `[${text || url}](${url})`;
+        } else if (type === 'like') {
+            linkStr = `<a class="u-like-of" href="${url}">${text || url}</a>`;
+        } else if (type === 'reply') {
+            linkStr = `<a class="u-in-reply-to" href="${url}">${text || url}</a>`;
+        }
+
+        const newContent = content.substring(0, selection.start) + linkStr + content.substring(selection.end);
+        setContent(newContent);
+        showToast('Link inserted', 'success');
+    };
+
     const confirmImage = async (name: string) => {
         if (!lastPickedUri || !name || !repoConfig || !repoPath) return;
 
@@ -1105,14 +1194,23 @@ export default function Editor() {
                                 scrollEnabled={false} // Le t the parent ScrollView handle scrolling
                             />
                         </ScrollView>
-                        {/* Floating Action Button for adding images in Edit mode */}
-                        <IconButton
-                            icon="image-plus"
-                            mode="contained"
-                            size={28}
-                            style={styles.fab}
-                            onPress={pickImage}
-                        />
+                        {/* Floating Action Buttons for adding content in Edit mode */}
+                        <View style={styles.fabContainer}>
+                            <IconButton
+                                icon="link-plus"
+                                mode="contained"
+                                size={28}
+                                style={styles.fabItem}
+                                onPress={() => setIsLinkModalVisible(true)}
+                            />
+                            <IconButton
+                                icon="image-plus"
+                                mode="contained"
+                                size={28}
+                                style={styles.fabItem}
+                                onPress={pickImage}
+                            />
+                        </View>
                     </View>
 
                     {/* Preview Tab */}
@@ -1137,6 +1235,12 @@ export default function Editor() {
             </View>
 
             <Portal>
+                <LinkMentionDialog
+                    visible={isLinkModalVisible}
+                    onDismiss={() => setIsLinkModalVisible(false)}
+                    onConfirm={confirmLink}
+                />
+
                 <ImageNameDialog
                     visible={isImageNameVisible}
                     onDismiss={() => setIsImageNameVisible(false)}
@@ -1200,10 +1304,14 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 40,
     },
-    fab: {
+    fabContainer: {
         position: 'absolute',
-        margin: 16,
-        right: 0,
-        bottom: 0,
+        right: 16,
+        bottom: 16,
+        gap: 12, // Space between buttons
+    },
+    fabItem: {
+        margin: 0,
+        elevation: 4,
     },
 });
