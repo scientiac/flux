@@ -10,13 +10,23 @@ import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Dimensions, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
+import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
-import { useAppContext } from '../context/AppContext';
+import { Draft, useAppContext } from '../context/AppContext';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
-const ASSET_ITEM_SIZE = (width - 48) / COLUMN_COUNT - 0.5; // Subtract 0.5 to avoid rounding issues causing wrap
+const ASSET_SPACING = 12;
+const ASSET_CONTAINER_PADDING = 16;
+const ASSET_ITEM_WIDTH = (width - (ASSET_CONTAINER_PADDING * 2) - ASSET_SPACING) / COLUMN_COUNT;
+
+const getStableRatio = (name: string) => {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return 0.7 + (Math.abs(hash) % 60) / 100; // Ratio between 0.7 and 1.3
+};
 
 // Enable LayoutAnimation on Android
 
@@ -256,7 +266,7 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
             <View style={styles.assetThumbContainer}>
                 <Image
                     source={{ uri: item.download_url, headers }}
-                    style={styles.assetImage}
+                    style={[styles.assetImage, { aspectRatio: getStableRatio(item.name) }]}
                     contentFit="cover"
                     cachePolicy="disk"
                 />
@@ -360,7 +370,7 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
 
     if (isGrid) {
         return (
-            <Animated.View style={[animatedStyle, { width: ASSET_ITEM_SIZE, height: ASSET_ITEM_SIZE, margin: 8, borderRadius: 16, backgroundColor: theme.colors.onSurfaceVariant }]} />
+            <Animated.View style={[animatedStyle, { width: ASSET_ITEM_WIDTH, height: ASSET_ITEM_WIDTH * (0.8 + Math.random() * 0.6), marginVertical: 6, borderRadius: 16, backgroundColor: theme.colors.onSurfaceVariant }]} />
         );
     }
 
@@ -377,17 +387,14 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
 const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
     const items = Array.from({ length: isGrid ? 16 : 12 });
     if (isGrid) {
-        const rows = [];
-        for (let i = 0; i < items.length; i += 2) {
-            rows.push(items.slice(i, i + 2));
-        }
         return (
-            <View style={{ width: '100%' }}>
-                {rows.map((row, i) => (
-                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'center', width: '100%' }}>
-                        {row.map((_, j) => <SkeletonItem key={j} isGrid />)}
-                    </View>
-                ))}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: ASSET_CONTAINER_PADDING }}>
+                <View style={{ width: ASSET_ITEM_WIDTH }}>
+                    {Array.from({ length: 6 }).map((_, i) => <SkeletonItem key={i} isGrid />)}
+                </View>
+                <View style={{ width: ASSET_ITEM_WIDTH }}>
+                    {Array.from({ length: 6 }).map((_, i) => <SkeletonItem key={i * 2 + 1} isGrid />)}
+                </View>
             </View>
         );
     }
@@ -438,7 +445,7 @@ const DirItem = memo(({ item, onPress, onRename }: { item: any, onPress: () => v
 
 
 export default function Files() {
-    const { config, repoCache, setRepoFileCache, assetCache, setRepoAssetCache, localDrafts, saveDraft, deleteDraft } = useAppContext();
+    const { config, repoCache, setRepoFileCache, assetCache, setRepoAssetCache, localDrafts, saveDraft, deleteDraft, showToast } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
     const { notice } = useLocalSearchParams();
@@ -470,18 +477,17 @@ export default function Files() {
     const [isRenameVisible, setIsRenameVisible] = useState(false);
     const [isDeleteVisible, setIsDeleteVisible] = useState(false);
     const [selectedFile, setSelectedFile] = useState<any>(null);
-    const [selectedAsset, setSelectedAsset] = useState<any>(null);
 
     const [isImageNameVisible, setIsImageNameVisible] = useState(false);
     const [pendingImage, setPendingImage] = useState<any>(null);
 
-    const [snackbarVisible, setSnackbarVisible] = useState(false);
-    const [snackbarMsg, setSnackbarMsg] = useState('');
-
     const [isPublishDialogVisible, setIsPublishDialogVisible] = useState(false);
-    const [selectedDraft, setSelectedDraft] = useState<any>(null);
+    const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
     const [isDeleteDraftVisible, setIsDeleteDraftVisible] = useState(false);
     const [isRenameDraftVisible, setIsRenameDraftVisible] = useState(false);
+
+    const [isRenameAssetVisible, setIsRenameAssetVisible] = useState(false);
+    const [selectedAsset, setSelectedAsset] = useState<any>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [tombstones, setTombstones] = useState<Set<string>>(new Set());
     const activePathRef = useRef<string | null>(null);
@@ -699,18 +705,15 @@ export default function Files() {
             });
 
             await deleteDraft(selectedDraft.id);
-            setSnackbarMsg('Published to GitHub');
-            setSnackbarVisible(true);
-            fetchFiles();
+            showToast('Post published successfully', 'success');
         } catch (e: any) {
-            console.error('[Files] Publish draft failed', e);
-            setSnackbarMsg(`Publish failed: ${e.response?.data?.message || e.message}`);
-            setSnackbarVisible(true);
+            console.error('[Files] Publish failed', e);
+            showToast(`Publish failed: ${e.message}`, 'error');
         } finally {
             setIsLoading(false);
             setSelectedDraft(null);
         }
-    }, [selectedDraft, repoPath, repoConfig, deleteDraft, fetchFiles, currentDir]);
+    }, [selectedDraft, repoPath, repoConfig, deleteDraft, fetchFiles, currentDir, showToast]);
 
     const handleAction = useCallback(() => {
         if (mode === 'posts') setIsNewFileVisible(true);
@@ -767,8 +770,7 @@ export default function Files() {
             const updated = files.filter(f => f.path !== selectedFile.path);
             setFiles(updated);
             await setRepoFileCache(repoPath, updated);
-            setSnackbarMsg(`${selectedFile.name} deleted`);
-            setSnackbarVisible(true);
+            showToast(`${selectedFile.name} deleted`, 'success');
 
             // Auto-remove empty parent directory
             const parentDir = selectedFile.path.substring(0, selectedFile.path.lastIndexOf('/'));
@@ -794,14 +796,13 @@ export default function Files() {
                 }
             }
         } catch (e: any) {
-            setSnackbarMsg(`Delete failed: ${e.message}`);
-            setSnackbarVisible(true);
+            showToast(`Delete failed: ${e.message}`, 'error');
         } finally {
             setIsLoading(false);
             setIsDeleteVisible(false);
             setSelectedFile(null);
         }
-    }, [selectedFile, repoPath, files, setRepoFileCache]);
+    }, [selectedFile, repoPath, files, setRepoFileCache, showToast]);
 
     const handleRenameDraft = async (newTitle: string) => {
         if (!selectedDraft || !newTitle) return;
@@ -812,8 +813,7 @@ export default function Files() {
         });
         setIsRenameDraftVisible(false);
         setSelectedDraft(null);
-        setSnackbarMsg(`Renamed draft to ${newTitle}`);
-        setSnackbarVisible(true);
+        showToast(`Renamed draft to ${newTitle}`, 'success');
     };
 
     const handleRenameDir = useCallback(async (newName: string) => {
@@ -822,7 +822,18 @@ export default function Files() {
             setIsRenameVisible(false);
             return;
         }
-        setIsLoading(true);
+
+        const oldFile = { ...selectedFile };
+        const previousFiles = [...files];
+        const oldDirPath = oldFile.path.replace(/^\/+|\/+$/g, '');
+        const parentPath = oldDirPath.includes('/') ? oldDirPath.substring(0, oldDirPath.lastIndexOf('/')) : '';
+        const newDirPath = parentPath ? `${parentPath}/${newName}`.replace(/\/+/g, '/') : newName;
+
+        // Optimistically update UI
+        const optimisticFiles = files.map(f => (f.path === oldFile.path) ? { ...f, name: newName, path: newDirPath } : f);
+        setFiles(optimisticFiles);
+        setIsRenameVisible(false);
+
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
             // 1. Get Repo info for default branch
@@ -831,78 +842,55 @@ export default function Files() {
             });
             const branch = repoRes.data.default_branch;
 
-            // 2. Get HEAD commit and its tree
+            // 2. Get HEAD commit
             const branchRes = await axios.get(`https://api.github.com/repos/${repoPath}/branches/${branch}`, {
                 headers: { Authorization: `token ${token}` }
             });
-            const baseTreeSha = branchRes.data.commit.commit.tree.sha;
             const parentCommitSha = branchRes.data.commit.sha;
+            const rootTreeSha = branchRes.data.commit.commit.tree.sha;
 
-            // 3. Get recursive tree
-            const treeRes = await axios.get(`https://api.github.com/repos/${repoPath}/git/trees/${baseTreeSha}?recursive=1`, {
-                headers: { Authorization: `token ${token}` }
-            });
-
-            const oldDirPath = selectedFile.path;
-            const parentPath = oldDirPath.includes('/') ? oldDirPath.substring(0, oldDirPath.lastIndexOf('/')) : '';
-            const newDirPath = parentPath ? `${parentPath}/${newName}`.replace(/\/+/g, '/') : newName;
-
-            // 4. Transform tree: filter out old and add new paths
-            // We need to keep all items NOT in the old path, and add new versions of items THAT WERE in the old path
-            const treeItems = treeRes.data.tree;
-            const newTree = treeItems
-                .filter((item: any) => !item.path.startsWith(oldDirPath + '/') && item.path !== oldDirPath)
-                .map((item: any) => ({
-                    path: item.path,
-                    mode: item.mode,
-                    type: item.type,
-                    sha: item.sha
-                }));
-
-            const movedItems = treeItems
-                .filter((item: any) => item.path === oldDirPath || item.path.startsWith(oldDirPath + '/'))
-                .map((item: any) => {
-                    const relativePath = item.path.substring(oldDirPath.length);
-                    return {
-                        path: newDirPath + relativePath,
-                        mode: item.mode,
-                        type: item.type,
-                        sha: item.sha
-                    };
-                });
-
-            const finalTree = [...newTree, ...movedItems];
-
-            // 5. Create new tree
+            // 3. Create a new tree based on the head commit's tree
             const createTreeRes = await axios.post(`https://api.github.com/repos/${repoPath}/git/trees`, {
-                tree: finalTree
+                base_tree: rootTreeSha,
+                tree: [
+                    {
+                        path: oldDirPath,
+                        mode: '040000',
+                        type: 'tree',
+                        sha: null // Deletes the old directory tree
+                    },
+                    {
+                        path: newDirPath,
+                        mode: '040000',
+                        type: 'tree',
+                        sha: oldFile.sha // Re-links the same directory tree at the new path
+                    }
+                ]
             }, { headers: { Authorization: `token ${token}` } });
 
-            // 6. Create commit
+            // 4. Create commit
             const createCommitRes = await axios.post(`https://api.github.com/repos/${repoPath}/git/commits`, {
-                message: `Rename directory ${selectedFile.name} to ${newName}`,
+                message: `Rename directory ${oldFile.name} to ${newName}`,
                 tree: createTreeRes.data.sha,
                 parents: [parentCommitSha]
             }, { headers: { Authorization: `token ${token}` } });
 
-            // 7. Update ref
+            // 5. Update ref
             await axios.patch(`https://api.github.com/repos/${repoPath}/git/refs/heads/${branch}`, {
                 sha: createCommitRes.data.sha
             }, { headers: { Authorization: `token ${token}` } });
 
-            setSnackbarMsg(`Renamed directory to ${newName}`);
-            setSnackbarVisible(true);
-            fetchFiles();
+            await setRepoFileCache(repoPath, optimisticFiles);
+            showToast(`Renamed directory to ${newName}`, 'success');
         } catch (e: any) {
-            console.error('[Files] Rename dir failed', e);
-            setSnackbarMsg(`Rename failed: ${e.message}`);
-            setSnackbarVisible(true);
+            console.error('[Files] Rename dir failed', e.response?.data || e.message);
+            // Revert on failure
+            setFiles(previousFiles);
+            showToast(`Rename failed: ${e.response?.data?.message || e.message}`, 'error');
         } finally {
-            setIsLoading(false);
-            setIsRenameVisible(false);
             setSelectedFile(null);
         }
-    }, [selectedFile, repoPath, repoConfig, fetchFiles]);
+    }, [selectedFile, repoPath, repoConfig, files, setRepoFileCache, showToast]);
 
     const handleRenameFile = useCallback(async (newName: string) => {
         if (!selectedFile || !newName || !repoPath || !repoConfig) return;
@@ -918,37 +906,44 @@ export default function Files() {
             setIsRenameVisible(false);
             return;
         }
-        setIsLoading(true);
+
+        const oldFile = { ...selectedFile };
+        const previousFiles = [...files];
+        const parentDir = oldFile.path.includes('/') ? oldFile.path.substring(0, oldFile.path.lastIndexOf('/')) : '';
+        const newPath = parentDir ? `${parentDir}/${cleanName}`.replace(/\/+/g, '/') : cleanName;
+
+        // Optimistically update UI
+        const optimisticFiles = files.map(f => f.sha === oldFile.sha ? { ...f, name: cleanName, path: newPath } : f);
+        setFiles(optimisticFiles);
+        setIsRenameVisible(false);
+
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
+            const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${oldFile.path}`, {
                 headers: { Authorization: `token ${token}` }
             });
-            // Rename within the same directory as the original file
-            const parentDir = selectedFile.path.substring(0, selectedFile.path.lastIndexOf('/'));
-            const newPath = `${parentDir}/${cleanName}`;
+
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                message: `Rename ${selectedFile.name} to ${cleanName}`,
+                message: `Rename ${oldFile.name} to ${cleanName}`,
                 content: response.data.content,
             }, { headers: { Authorization: `token ${token}` } });
-            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
+
+            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${oldFile.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: { message: `Delete old file after rename`, sha: selectedFile.sha }
+                data: { message: `Delete old file after rename`, sha: oldFile.sha }
             });
-            const updatedFiles = files.map(f => f.sha === selectedFile.sha ? { ...f, name: cleanName, path: newPath } : f);
-            setFiles(updatedFiles);
-            await setRepoFileCache(repoPath, updatedFiles);
-            setSnackbarMsg(`Renamed to ${cleanName}`);
-            setSnackbarVisible(true);
+
+            await setRepoFileCache(repoPath, optimisticFiles);
+            showToast(`Renamed to ${cleanName}`, 'success');
         } catch (e: any) {
-            setSnackbarMsg(`Rename failed: ${e.message}`);
-            setSnackbarVisible(true);
+            console.error('[Files] Rename file failed', e);
+            // Revert on failure
+            setFiles(previousFiles);
+            showToast(`Rename failed: ${e.message}`, 'error');
         } finally {
-            setIsLoading(false);
-            setIsRenameVisible(false);
             setSelectedFile(null);
         }
-    }, [selectedFile, repoPath, repoConfig, files, setRepoFileCache, handleRenameDir]);
+    }, [selectedFile, repoPath, repoConfig, files, setRepoFileCache, handleRenameDir, showToast]);
 
     const handleDeleteAsset = useCallback(async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -964,51 +959,54 @@ export default function Files() {
             const updated = assets.filter(f => f.path !== selectedAsset.path);
             setAssets(updated);
             await setRepoAssetCache(repoPath, updated);
-            setSnackbarMsg(`${selectedAsset.name} deleted`);
-            setSnackbarVisible(true);
+            showToast(`${selectedAsset.name} deleted`, 'success');
         } catch (e: any) {
-            setSnackbarMsg(`Delete failed: ${e.message}`);
-            setSnackbarVisible(true);
+            showToast(`Delete failed: ${e.message}`, 'error');
         } finally {
             setIsLoading(false);
             setIsDeleteVisible(false);
             setSelectedAsset(null);
         }
-    }, [selectedAsset, repoPath, assets, setRepoAssetCache]);
+    }, [selectedAsset, repoPath, assets, setRepoAssetCache, showToast]);
 
     const handleRenameAsset = async (newName: string) => {
         if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
         const ext = selectedAsset.name.split('.').pop();
         const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
+
+        const oldAsset = { ...selectedAsset };
+        const previousAssets = [...assets];
         const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
         const cleanAssets = repoConfig.useStaticFolder !== false ? (repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '') : '';
         const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
         const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
-        setIsLoading(true);
+
+        // Optimistically update UI
+        const optimisticAssets = assets.map(a => a.path === oldAsset.path ? { ...a, name: cleanName, path: newPath } : a);
+        setAssets(optimisticAssets);
+        setIsRenameVisible(false);
+
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const contentRes = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+            const contentRes = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${oldAsset.path}`, {
                 headers: { Authorization: `token ${token}` }
             });
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                message: `Rename ${selectedAsset.name}`,
+                message: `Rename ${oldAsset.name}`,
                 content: contentRes.data.content,
             }, { headers: { Authorization: `token ${token}` } });
-            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${oldAsset.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: { message: `Cleanup after rename`, sha: selectedAsset.sha }
+                data: { message: `Cleanup after rename`, sha: oldAsset.sha }
             });
-            const updated = assets.map(a => a.path === selectedAsset.path ? { ...a, name: cleanName, path: newPath } : a);
-            setAssets(updated);
-            await setRepoAssetCache(repoPath, updated);
-            setSnackbarMsg(`Renamed to ${cleanName}`);
-            setSnackbarVisible(true);
+            await setRepoAssetCache(repoPath, optimisticAssets);
+            showToast(`Renamed to ${cleanName}`, 'success');
         } catch (e: any) {
-            setSnackbarMsg(`Rename failed: ${e.message}`);
-            setSnackbarVisible(true);
+            console.error('[Files] Rename asset failed', e);
+            // Revert on failure
+            setAssets(previousAssets);
+            showToast(`Rename failed: ${e.message}`, 'error');
         } finally {
-            setIsLoading(false);
-            setIsRenameVisible(false);
             setSelectedAsset(null);
         }
     };
@@ -1035,14 +1033,11 @@ export default function Files() {
             const newPath = [fullAssetsPath, filename].filter(Boolean).join('/');
             const manip = await ImageManipulator.manipulateAsync(pendingImage.uri, [{ resize: { width: 1200 } }], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true });
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, { message: `Upload ${filename}`, content: manip.base64 }, { headers: { Authorization: `token ${token}` } });
-            setSnackbarMsg(`Uploaded ${filename}`);
-            setSnackbarVisible(true);
-            fetchAssets(true);
+            showToast('Image uploaded', 'success');
         } catch (e: any) {
-            setSnackbarMsg(`Upload failed: ${e.message}`);
-            setSnackbarVisible(true);
+            showToast(`Upload failed: ${e.message}`, 'error');
         } finally { setIsLoading(false); setPendingImage(null); }
-    }, [pendingImage, repoPath, repoConfig?.useStaticFolder, repoConfig?.staticDir, repoConfig?.assetsDir, fetchAssets]);
+    }, [pendingImage, repoPath, repoConfig?.useStaticFolder, repoConfig?.staticDir, repoConfig?.assetsDir, fetchAssets, showToast]);
 
     const handleRefreshPosts = useCallback(() => fetchFiles(true), [fetchFiles]);
     const handleRefreshAssets = useCallback(() => fetchAssets(true), [fetchAssets]);
@@ -1090,13 +1085,13 @@ export default function Files() {
                 item={item}
                 onPress={canEdit
                     ? () => router.push(`/editor/${encodeURIComponent(item.path)}`)
-                    : () => { setSnackbarMsg(`Cannot edit binary file: ${item.name}`); setSnackbarVisible(true); }
+                    : () => { showToast(`Cannot edit binary file: ${item.name}`, 'info'); }
                 }
                 onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
                 onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
             />
         );
-    }, [router, handleDirPress, handleNavigateUp, isEditableFile]);
+    }, [router, handleDirPress, handleNavigateUp, isEditableFile, showToast]);
 
     const renderDraftItem = useCallback(({ item }: any) => (
         <DraftItem
@@ -1234,8 +1229,6 @@ export default function Files() {
                         <FlatList
                             data={filteredAssets}
                             keyExtractor={assetKeyExtractor}
-                            numColumns={2}
-                            columnWrapperStyle={styles.assetRow}
                             contentContainerStyle={styles.assetList}
                             refreshControl={
                                 <RefreshControl
@@ -1245,7 +1238,35 @@ export default function Files() {
                                     progressBackgroundColor={theme.colors.surface}
                                 />
                             }
-                            renderItem={renderAssetItem}
+                            renderItem={null}
+                            ListHeaderComponent={
+                                filteredAssets.length > 0 ? (
+                                    <View style={styles.assetRow}>
+                                        <View style={styles.assetColumn}>
+                                            {filteredAssets.filter((_, i) => i % 2 === 0).map(item => (
+                                                <AssetItem
+                                                    key={item.path}
+                                                    item={item}
+                                                    headers={githubToken ? { Authorization: `token ${githubToken}` } : {}}
+                                                    onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
+                                                    onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
+                                                />
+                                            ))}
+                                        </View>
+                                        <View style={styles.assetColumn}>
+                                            {filteredAssets.filter((_, i) => i % 2 !== 0).map(item => (
+                                                <AssetItem
+                                                    key={item.path}
+                                                    item={item}
+                                                    headers={githubToken ? { Authorization: `token ${githubToken}` } : {}}
+                                                    onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
+                                                    onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
+                                                />
+                                            ))}
+                                        </View>
+                                    </View>
+                                ) : null
+                            }
                             ListFooterComponent={
                                 (isLoading && filteredAssets.length > 0) ? (
                                     <ListingSkeleton isGrid />
@@ -1346,15 +1367,6 @@ export default function Files() {
                 />
             </Portal>
 
-            <Snackbar
-                visible={snackbarVisible}
-                onDismiss={() => setSnackbarVisible(false)}
-                duration={3000}
-                style={{ backgroundColor: theme.colors.secondaryContainer, borderRadius: 12 }}
-            >
-                <Text style={{ color: theme.colors.onSecondaryContainer }}>{snackbarMsg}</Text>
-            </Snackbar>
-
             <FAB
                 icon={mode === 'assets' ? 'upload' : 'plus'}
                 label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Image'}
@@ -1438,22 +1450,26 @@ const styles = StyleSheet.create({
         paddingBottom: 8,
     },
     assetList: {
-        padding: 8,
+        paddingTop: 8,
         paddingBottom: 100,
     },
     assetRow: {
+        flexDirection: 'row',
         justifyContent: 'space-between',
-        paddingHorizontal: 8,
+        paddingHorizontal: ASSET_CONTAINER_PADDING,
+    },
+    assetColumn: {
+        width: ASSET_ITEM_WIDTH,
     },
     assetCard: {
-        width: ASSET_ITEM_SIZE,
-        margin: 8,
+        width: ASSET_ITEM_WIDTH,
+        marginVertical: 6,
         borderRadius: 16,
         overflow: 'hidden',
         elevation: 2,
     },
     assetThumbContainer: { position: 'relative' },
-    assetImage: { width: '100%', aspectRatio: 1 },
+    assetImage: { width: '100%' },
     assetOverlay: {
         position: 'absolute',
         top: 0,

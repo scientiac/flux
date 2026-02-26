@@ -16,7 +16,17 @@ import { useAppContext } from '../../context/AppContext';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
-const ITEM_SIZE = (width - 40) / COLUMN_COUNT - 0.5; // Account for 4px grid padding + 8px item margins
+const ASSET_SPACING = 12;
+const ASSET_CONTAINER_PADDING = 16;
+const ASSET_ITEM_WIDTH = (width - (ASSET_CONTAINER_PADDING * 2) - ASSET_SPACING) / COLUMN_COUNT;
+
+const getStableRatio = (name: string) => {
+    let hash = 0;
+    for (let i = 0; i < name.length; i++) {
+        hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return 0.7 + (Math.abs(hash) % 60) / 100; // Ratio between 0.7 and 1.3
+};
 
 // Inline sliding tab container
 const SlidingTabContainer = ({ children, selectedIndex }: { children: React.ReactNode[]; selectedIndex: number }) => {
@@ -148,7 +158,7 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
 
     if (isGrid) {
         return (
-            <Animated.View style={[animatedStyle, { width: ITEM_SIZE, height: ITEM_SIZE, margin: 8, borderRadius: 16, backgroundColor: theme.colors.onSurfaceVariant }]} />
+            <Animated.View style={[animatedStyle, { width: ASSET_ITEM_WIDTH, height: ASSET_ITEM_WIDTH * (0.8 + Math.random() * 0.6), marginVertical: 6, borderRadius: 16, backgroundColor: theme.colors.onSurfaceVariant }]} />
         );
     }
 
@@ -165,17 +175,14 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
 const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
     const items = Array.from({ length: isGrid ? 12 : 8 });
     if (isGrid) {
-        const rows = [];
-        for (let i = 0; i < items.length; i += 2) {
-            rows.push(items.slice(i, i + 2));
-        }
         return (
-            <View style={{ width: '100%' }}>
-                {rows.map((row, i) => (
-                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'center', width: '100%' }}>
-                        {row.map((_, j) => <SkeletonItem key={j} isGrid />)}
-                    </View>
-                ))}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: ASSET_CONTAINER_PADDING }}>
+                <View style={{ width: ASSET_ITEM_WIDTH }}>
+                    {Array.from({ length: 4 }).map((_, i) => <SkeletonItem key={i} isGrid />)}
+                </View>
+                <View style={{ width: ASSET_ITEM_WIDTH }}>
+                    {Array.from({ length: 4 }).map((_, i) => <SkeletonItem key={i * 2 + 1} isGrid />)}
+                </View>
             </View>
         );
     }
@@ -186,9 +193,45 @@ const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
     );
 });
 
+// Sub-component for Asset Item
+const AssetItem = memo(({ item, headers, onInsert, onRename, onDelete }: { item: any, headers: any, onInsert: (filename: string) => void, onRename: () => void, onDelete: () => void }) => {
+    const theme = useTheme();
+    return (
+        <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant, opacity: item.isPending ? 0.6 : 1 }]}>
+            <TouchableOpacity onPress={() => onInsert(item.name)} style={styles.assetThumbContainer}>
+                <Image
+                    source={{ uri: item.download_url, headers }}
+                    style={[styles.assetImage, { aspectRatio: getStableRatio(item.name) }]}
+                    contentFit="cover"
+                    cachePolicy="disk"
+                />
+                <View style={styles.assetOverlay}>
+                    <IconButton
+                        icon="cursor-text"
+                        iconColor="white"
+                        size={18}
+                        onPress={onRename}
+                        style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
+                    />
+                    <IconButton
+                        icon="delete"
+                        iconColor={theme.colors.error}
+                        size={18}
+                        onPress={onDelete}
+                        style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
+                    />
+                </View>
+            </TouchableOpacity>
+            <View style={{ backgroundColor: theme.colors.surface, padding: 4 }}>
+                <PaperText variant="bodySmall" numberOfLines={1} style={styles.assetCardName}>{item.name}</PaperText>
+            </View>
+        </View>
+    );
+});
+
 // Sub-component for Assets Manager
 const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath: string | null, staticDir: string, assetsDir: string, onInsert: (filename: string) => void }) => {
-    const { config, assetCache, setRepoAssetCache } = useAppContext();
+    const { config, assetCache, setRepoAssetCache, showToast } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [githubToken, setGithubToken] = useState<string | null>(null);
     const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
@@ -267,44 +310,51 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
         }
     };
 
-    const handleRename = async (newName: string) => {
+    const handleRename = useCallback(async (newName: string) => {
         if (!selectedAsset || !newName || !repoPath || !repoConfig) return;
         const ext = selectedAsset.name.split('.').pop();
         const cleanName = newName.includes('.') ? newName : `${newName}.${ext}`;
+
+        const oldAsset = { ...selectedAsset };
+        const previousAssets = [...assets];
         const cleanStatic = repoConfig.useStaticFolder !== false ? staticDir.replace(/^\/+|\/+$/g, '') : '';
         const cleanAssets = assetsDir.replace(/^\/+|\/+$/g, '');
         const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
         const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
 
-        setIsLoading(true);
+        // Optimistically update UI
+        const optimisticAssets = assets.map(a => a.path === oldAsset.path ? { ...a, name: cleanName, path: newPath } : a);
+        setRepoAssetCache(repoPath, optimisticAssets);
         setRenameVisible(false);
+
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const contentResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+            const contentResponse = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${oldAsset.path}`, {
                 headers: { Authorization: `token ${token}` }
             });
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                message: `Rename ${selectedAsset.name} to ${cleanName}`,
+                message: `Rename ${oldAsset.name} to ${cleanName}`,
                 content: contentResponse.data.content,
             }, {
                 headers: { Authorization: `token ${token}` }
             });
-            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
+            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${oldAsset.path}`, {
                 headers: { Authorization: `token ${token}` },
                 data: {
-                    message: `Cleanup after rename ${selectedAsset.name} to ${cleanName}`,
-                    sha: selectedAsset.sha
+                    message: `Cleanup after rename ${oldAsset.name} to ${cleanName}`,
+                    sha: oldAsset.sha
                 }
             });
-            const updatedAssets = assets.map(a => a.path === selectedAsset.path ? { ...a, name: cleanName, path: newPath } : a);
-            await setRepoAssetCache(repoPath, updatedAssets);
+            await setRepoAssetCache(repoPath, optimisticAssets);
         } catch (e: any) {
             console.error('[Assets] Rename failed', e.response?.data || e.message);
+            // Revert on failure
+            setRepoAssetCache(repoPath, previousAssets);
+            showToast(`Rename failed: ${e.message}`, 'error');
         } finally {
-            setIsLoading(false);
             setSelectedAsset(null);
         }
-    };
+    }, [selectedAsset, repoPath, repoConfig, assets, staticDir, assetsDir, setRepoAssetCache]);
 
     if (isLoading && assets.length === 0) {
         return (
@@ -332,7 +382,6 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
             <FlatList
                 data={assets}
                 keyExtractor={(item) => item.path}
-                numColumns={COLUMN_COUNT}
                 contentContainerStyle={styles.assetsGrid}
                 refreshControl={
                     <RefreshControl
@@ -342,46 +391,49 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
                         progressBackgroundColor={theme.colors.surface}
                     />
                 }
-                renderItem={({ item }) => (
-                    <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant, opacity: item.isPending ? 0.6 : 1 }]}>
-                        <TouchableOpacity onPress={() => onInsert(item.name)} style={styles.assetThumbContainer}>
-                            <Image
-                                source={{ uri: item.download_url, headers }}
-                                style={styles.assetImage}
-                                contentFit="cover"
-                                cachePolicy="disk"
-                            />
-                            <View style={styles.assetOverlay}>
-                                <IconButton
-                                    icon="cursor-text"
-                                    iconColor="white"
-                                    size={20}
-                                    onPress={() => {
-                                        setSelectedAsset(item);
-                                        setRenameVisible(true);
-                                    }}
-                                    style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
-                                />
-                                <IconButton
-                                    icon="delete"
-                                    iconColor={theme.colors.error}
-                                    size={20}
-                                    onPress={() => {
-                                        setSelectedAsset(item);
-                                        setDeleteConfirmVisible(true);
-                                    }}
-                                    style={{ backgroundColor: 'rgba(0,0,0,0.3)', margin: 2 }}
-                                />
+                renderItem={null}
+                ListHeaderComponent={
+                    assets.length > 0 ? (
+                        <View style={styles.assetRow}>
+                            <View style={styles.assetColumn}>
+                                {assets.filter((_, i) => i % 2 === 0).map(item => (
+                                    <AssetItem
+                                        key={item.path}
+                                        item={item}
+                                        headers={headers}
+                                        onInsert={onInsert}
+                                        onRename={() => { setSelectedAsset(item); setRenameVisible(true); }}
+                                        onDelete={() => { setSelectedAsset(item); setDeleteConfirmVisible(true); }}
+                                    />
+                                ))}
                             </View>
-                        </TouchableOpacity>
-                        <View style={{ backgroundColor: theme.colors.surface, padding: 4 }}>
-                            <PaperText variant="bodySmall" numberOfLines={1} style={styles.assetCardName}>{item.name}</PaperText>
+                            <View style={styles.assetColumn}>
+                                {assets.filter((_, i) => i % 2 !== 0).map(item => (
+                                    <AssetItem
+                                        key={item.path}
+                                        item={item}
+                                        headers={headers}
+                                        onInsert={onInsert}
+                                        onRename={() => { setSelectedAsset(item); setRenameVisible(true); }}
+                                        onDelete={() => { setSelectedAsset(item); setDeleteConfirmVisible(true); }}
+                                    />
+                                ))}
+                            </View>
                         </View>
-                    </View>
-                )}
+                    ) : null
+                }
+                ListEmptyComponent={
+                    isLoading ? (
+                        <ListingSkeleton isGrid />
+                    ) : (
+                        <View style={styles.emptyState}>
+                            <PaperText style={{ opacity: 0.5 }}>No images found</PaperText>
+                        </View>
+                    )
+                }
             />
 
-            <Portal>
+            < Portal >
                 <Dialog visible={renameVisible} onDismiss={() => setRenameVisible(false)}>
                     <Dialog.Title>Rename Asset</Dialog.Title>
                     <Dialog.Content>
@@ -408,8 +460,8 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
                         <Button onPress={handleDelete} textColor={theme.colors.error}>Delete</Button>
                     </Dialog.Actions>
                 </Dialog>
-            </Portal>
-        </View>
+            </Portal >
+        </View >
     );
 };
 
@@ -1086,10 +1138,27 @@ const styles = StyleSheet.create({
     input: { minHeight: '100%', padding: 24, fontSize: 18, lineHeight: 28 },
     previewContainer: { flex: 1, padding: 24 },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    assetsGrid: { padding: 4 },
-    assetCard: { width: ITEM_SIZE, margin: 4, borderRadius: 12, overflow: 'hidden' },
+    assetsGrid: {
+        paddingTop: 8,
+        paddingBottom: 100,
+    },
+    assetRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: ASSET_CONTAINER_PADDING,
+    },
+    assetColumn: {
+        width: ASSET_ITEM_WIDTH,
+    },
+    assetCard: {
+        width: ASSET_ITEM_WIDTH,
+        marginVertical: 6,
+        borderRadius: 16,
+        overflow: 'hidden',
+        elevation: 2,
+    },
     assetThumbContainer: { position: 'relative' },
-    assetImage: { width: '100%', aspectRatio: 1 },
+    assetImage: { width: '100%' },
     assetOverlay: {
         position: 'absolute',
         top: 0,
@@ -1098,6 +1167,12 @@ const styles = StyleSheet.create({
         padding: 4
     },
     assetCardName: { fontSize: 11, padding: 4, textAlign: 'center' },
+    emptyState: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
     fab: {
         position: 'absolute',
         margin: 16,

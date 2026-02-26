@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import AppToast from '../components/AppToast';
 
 interface RepoConfig {
     contentDir: string;
@@ -16,7 +17,7 @@ interface AppConfig {
     repoConfigs: { [repoPath: string]: RepoConfig };
 }
 
-interface Draft {
+export interface Draft {
     id: string;
     title: string;
     content: string;
@@ -25,7 +26,7 @@ interface Draft {
     dirPath?: string;
 }
 
-interface AppContextType {
+export interface AppContextType {
     config: AppConfig;
     updateConfig: (newConfig: Partial<AppConfig>) => Promise<void>;
     updateRepoConfig: (repoPath: string, repoConfig: Partial<RepoConfig>) => Promise<void>;
@@ -44,6 +45,7 @@ interface AppContextType {
     localDrafts: Draft[];
     saveDraft: (draft: Draft) => Promise<void>;
     deleteDraft: (draftId: string) => Promise<void>;
+    showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -75,6 +77,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     const [repoCache, setRepoCache] = useState<{ [repoPath: string]: any[] }>({});
     const [assetCache, setAssetCache] = useState<{ [repoPath: string]: any[] }>({});
     const [localDrafts, setLocalDrafts] = useState<Draft[]>([]);
+    const [toast, setToast] = useState({ visible: false, message: '', type: 'info' as 'success' | 'error' | 'info' });
 
     const settingsPendingSave = useRef<boolean>(false);
     const cachePendingSave = useRef<{ [repoPath: string]: boolean }>({});
@@ -247,6 +250,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         });
     }, []);
 
+    const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+        setToast({ visible: true, message, type });
+    }, []);
+
     const resetConfig = useCallback(async () => {
         setConfig(DEFAULT_CONFIG);
         setCachedReposInternal([]);
@@ -274,12 +281,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setRepoAssetCache,
         localDrafts,
         saveDraft,
-        deleteDraft
-    }), [config, isConfigLoading, hasAutoRedirected, cachedRepos, repoCache, assetCache, localDrafts]);
+        deleteDraft,
+        showToast
+    }), [config, isConfigLoading, hasAutoRedirected, cachedRepos, repoCache, assetCache, localDrafts, showToast]);
 
     return (
         <AppContext.Provider value={contextValue}>
             {children}
+            <AppToast
+                visible={toast.visible}
+                message={toast.message}
+                type={toast.type}
+                onDismiss={() => setToast(prev => ({ ...prev, visible: false }))}
+            />
         </AppContext.Provider>
     );
 }
