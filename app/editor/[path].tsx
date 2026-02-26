@@ -108,20 +108,26 @@ const CommitDialog = ({ visible, onDismiss, onPublish, initialMsg, isDraft, init
 
 // Stabilize image rendering in Markdown preview
 const MemoizedMarkdownImage = React.memo(({ uri, headers, alt, theme }: any) => {
+    const [aspectRatio, setAspectRatio] = useState<number | null>(null);
+
     return (
         <View style={{ marginVertical: 16, alignItems: 'center', width: '100%' }}>
             <Image
                 source={{ uri, headers }}
                 style={{
-                    width: Dimensions.get('window').width - 48,
-                    height: 250,
+                    width: '100%',
+                    aspectRatio: aspectRatio || 16 / 9,
                     borderRadius: 16,
                     backgroundColor: theme.colors.surfaceVariant,
-                    borderWidth: 1,
-                    borderColor: theme.colors.outlineVariant
                 }}
                 contentFit="contain"
                 cachePolicy="disk"
+                onLoad={(e) => {
+                    const { width, height } = e.source;
+                    if (width && height) {
+                        setAspectRatio(width / height);
+                    }
+                }}
             />
             {alt ? (
                 <PaperText style={{ color: theme.colors.onSurfaceVariant, fontSize: 13, marginTop: 8, fontStyle: 'italic' }}>
@@ -554,12 +560,17 @@ export default function Editor() {
             textDecorationLine: 'underline',
             fontWeight: '600',
         },
+        paragraph: {
+            marginVertical: 8,
+            lineHeight: 24,
+        },
         blockquote: {
             borderColor: theme.colors.primary,
             borderLeftWidth: 6,
             marginLeft: 0,
             paddingLeft: 16,
             paddingVertical: 8,
+            marginVertical: 12,
             backgroundColor: theme.colors.surfaceVariant + '40',
             color: theme.colors.onSurfaceVariant,
             fontStyle: 'italic',
@@ -572,9 +583,31 @@ export default function Editor() {
             padding: 16,
             borderRadius: 12,
             fontSize: 14,
-            marginVertical: 12,
+            marginVertical: 16,
             borderWidth: 1,
             borderColor: theme.colors.outlineVariant,
+        },
+        table: {
+            borderWidth: 1,
+            borderColor: theme.colors.outlineVariant,
+            borderRadius: 8,
+            marginVertical: 16,
+            overflow: 'hidden',
+        },
+        tr: {
+            borderBottomWidth: 1,
+            borderColor: theme.colors.outlineVariant,
+            flexDirection: 'row',
+        },
+        th: {
+            padding: 12,
+            backgroundColor: theme.colors.surfaceVariant,
+            fontWeight: 'bold',
+            flex: 1,
+        },
+        td: {
+            padding: 12,
+            flex: 1,
         },
         code_inline: {
             fontFamily: Platform.select({ ios: 'Courier', default: 'monospace' }),
