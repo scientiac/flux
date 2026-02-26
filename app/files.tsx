@@ -20,14 +20,6 @@ const ASSET_SPACING = 12;
 const ASSET_CONTAINER_PADDING = 16;
 const ASSET_ITEM_WIDTH = (width - (ASSET_CONTAINER_PADDING * 2) - ASSET_SPACING) / COLUMN_COUNT;
 
-const getStableRatio = (name: string) => {
-    let hash = 0;
-    for (let i = 0; i < name.length; i++) {
-        hash = name.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return 0.7 + (Math.abs(hash) % 60) / 100; // Ratio between 0.7 and 1.3
-};
-
 // Enable LayoutAnimation on Android
 
 
@@ -261,14 +253,21 @@ const PublishDraftDialog = ({ visible, onDismiss, onPublish, initialTitle }: { v
 // Sub-component for Asset Item
 const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, headers: any, onRename: () => void, onDelete: () => void }) => {
     const theme = useTheme();
+    const [aspectRatio, setAspectRatio] = useState<number>(1); // Default to square until loaded
+
     return (
-        <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant }]}>
+        <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant }]} >
             <View style={styles.assetThumbContainer}>
                 <Image
                     source={{ uri: item.download_url, headers }}
-                    style={[styles.assetImage, { aspectRatio: getStableRatio(item.name) }]}
+                    style={[styles.assetImage, { aspectRatio }]}
                     contentFit="cover"
                     cachePolicy="disk"
+                    onLoad={(e) => {
+                        if (e.source.width && e.source.height) {
+                            setAspectRatio(e.source.width / e.source.height);
+                        }
+                    }}
                 />
                 <View style={styles.assetOverlay}>
                     <IconButton
