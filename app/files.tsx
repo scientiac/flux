@@ -365,9 +365,12 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
     }
 
     return (
-        <View style={{ borderRadius: 16, marginVertical: 4, height: 72, overflow: 'hidden', paddingHorizontal: 16 }}>
-            <Animated.View style={[animatedStyle, { flex: 1, backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 16 }]} />
-        </View>
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
+            <View style={{ padding: 16, height: 76, justifyContent: 'center' }}>
+                <Animated.View style={[animatedStyle, { height: 18, width: '70%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4, marginBottom: 12 }]} />
+                <Animated.View style={[animatedStyle, { height: 12, width: '30%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+            </View>
+        </Surface>
     );
 });
 

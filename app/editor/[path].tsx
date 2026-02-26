@@ -10,7 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
-import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, Surface, TextInput, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../../context/AppContext';
 
@@ -153,9 +153,12 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
     }
 
     return (
-        <View style={{ borderRadius: 16, marginVertical: 4, height: 72, overflow: 'hidden', paddingHorizontal: 16 }}>
-            <Animated.View style={[animatedStyle, { flex: 1, backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 16 }]} />
-        </View>
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
+            <View style={{ padding: 16, height: 76, justifyContent: 'center' }}>
+                <Animated.View style={[animatedStyle, { height: 18, width: '70%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4, marginBottom: 12 }]} />
+                <Animated.View style={[animatedStyle, { height: 12, width: '30%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+            </View>
+        </Surface>
     );
 });
 
