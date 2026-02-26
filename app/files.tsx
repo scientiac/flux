@@ -340,17 +340,29 @@ const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRen
 });
 
 // Sub-component for Directory Item
-const DirItem = memo(({ item, onPress }: { item: any, onPress: () => void }) => {
+const DirItem = memo(({ item, onPress, onRename }: { item: any, onPress: () => void, onRename?: () => void }) => {
     const theme = useTheme();
     const isBack = item._isBack;
     return (
-        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surfaceVariant }}>
             <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
                 <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                        <Avatar.Icon size={40} icon={isBack ? 'arrow-up' : 'folder'} style={{ backgroundColor: isBack ? theme.colors.surfaceVariant : theme.colors.primaryContainer }} color={isBack ? theme.colors.onSurfaceVariant : theme.colors.primary} />
-                        <Text variant="titleMedium" numberOfLines={1} style={{ flex: 1, fontWeight: 'bold', color: isBack ? theme.colors.onSurfaceVariant : theme.colors.onSurface }}>{item.name}</Text>
-                        {!isBack && <IconButton icon="chevron-right" size={20} iconColor={theme.colors.onSurfaceVariant} />}
+                    <View style={styles.draftHeader}>
+                        <Text variant="titleMedium" numberOfLines={1} style={[styles.draftTitle, { color: isBack ? theme.colors.onSurfaceVariant : theme.colors.onSurface }]}>
+                            {item.name}
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 4 }}>
+                            {!isBack && onRename && (
+                                <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
+                            )}
+                            <IconButton
+                                mode="contained-tonal"
+                                icon={isBack ? 'arrow-up' : 'folder-outline'}
+                                size={18}
+                                iconColor={isBack ? theme.colors.onSurfaceVariant : theme.colors.primary}
+                                onPress={onPress}
+                            />
+                        </View>
                     </View>
                 </View>
             </TouchableRipple>
@@ -715,8 +727,101 @@ export default function Files() {
         setSnackbarVisible(true);
     };
 
+    const handleRenameDir = useCallback(async (newName: string) => {
+        if (!selectedFile || !newName || !repoPath || !repoConfig) return;
+        if (newName === selectedFile.name) {
+            setIsRenameVisible(false);
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const token = await SecureStore.getItemAsync('github_access_token');
+            // 1. Get Repo info for default branch
+            const repoRes = await axios.get(`https://api.github.com/repos/${repoPath}`, {
+                headers: { Authorization: `token ${token}` }
+            });
+            const branch = repoRes.data.default_branch;
+
+            // 2. Get HEAD commit and its tree
+            const branchRes = await axios.get(`https://api.github.com/repos/${repoPath}/branches/${branch}`, {
+                headers: { Authorization: `token ${token}` }
+            });
+            const baseTreeSha = branchRes.data.commit.commit.tree.sha;
+            const parentCommitSha = branchRes.data.commit.sha;
+
+            // 3. Get recursive tree
+            const treeRes = await axios.get(`https://api.github.com/repos/${repoPath}/git/trees/${baseTreeSha}?recursive=1`, {
+                headers: { Authorization: `token ${token}` }
+            });
+
+            const oldDirPath = selectedFile.path;
+            const parentPath = oldDirPath.includes('/') ? oldDirPath.substring(0, oldDirPath.lastIndexOf('/')) : '';
+            const newDirPath = parentPath ? `${parentPath}/${newName}`.replace(/\/+/g, '/') : newName;
+
+            // 4. Transform tree: filter out old and add new paths
+            // We need to keep all items NOT in the old path, and add new versions of items THAT WERE in the old path
+            const treeItems = treeRes.data.tree;
+            const newTree = treeItems
+                .filter((item: any) => !item.path.startsWith(oldDirPath + '/') && item.path !== oldDirPath)
+                .map((item: any) => ({
+                    path: item.path,
+                    mode: item.mode,
+                    type: item.type,
+                    sha: item.sha
+                }));
+
+            const movedItems = treeItems
+                .filter((item: any) => item.path === oldDirPath || item.path.startsWith(oldDirPath + '/'))
+                .map((item: any) => {
+                    const relativePath = item.path.substring(oldDirPath.length);
+                    return {
+                        path: newDirPath + relativePath,
+                        mode: item.mode,
+                        type: item.type,
+                        sha: item.sha
+                    };
+                });
+
+            const finalTree = [...newTree, ...movedItems];
+
+            // 5. Create new tree
+            const createTreeRes = await axios.post(`https://api.github.com/repos/${repoPath}/git/trees`, {
+                tree: finalTree
+            }, { headers: { Authorization: `token ${token}` } });
+
+            // 6. Create commit
+            const createCommitRes = await axios.post(`https://api.github.com/repos/${repoPath}/git/commits`, {
+                message: `Rename directory ${selectedFile.name} to ${newName}`,
+                tree: createTreeRes.data.sha,
+                parents: [parentCommitSha]
+            }, { headers: { Authorization: `token ${token}` } });
+
+            // 7. Update ref
+            await axios.patch(`https://api.github.com/repos/${repoPath}/git/refs/heads/${branch}`, {
+                sha: createCommitRes.data.sha
+            }, { headers: { Authorization: `token ${token}` } });
+
+            setSnackbarMsg(`Renamed directory to ${newName}`);
+            setSnackbarVisible(true);
+            fetchFiles();
+        } catch (e: any) {
+            console.error('[Files] Rename dir failed', e);
+            setSnackbarMsg(`Rename failed: ${e.message}`);
+            setSnackbarVisible(true);
+        } finally {
+            setIsLoading(false);
+            setIsRenameVisible(false);
+            setSelectedFile(null);
+        }
+    }, [selectedFile, repoPath, repoConfig, fetchFiles]);
+
     const handleRenameFile = useCallback(async (newName: string) => {
         if (!selectedFile || !newName || !repoPath || !repoConfig) return;
+
+        if (selectedFile._isDir) {
+            return handleRenameDir(newName);
+        }
+
         // Preserve the original extension if the user doesn't provide one
         const originalExt = selectedFile.name.includes('.') ? selectedFile.name.substring(selectedFile.name.lastIndexOf('.')) : '';
         const cleanName = newName.includes('.') ? newName : `${newName}${originalExt}`;
@@ -754,7 +859,7 @@ export default function Files() {
             setIsRenameVisible(false);
             setSelectedFile(null);
         }
-    }, [selectedFile, repoPath, repoConfig, files, setRepoFileCache]);
+    }, [selectedFile, repoPath, repoConfig, files, setRepoFileCache, handleRenameDir]);
 
     const handleDeleteAsset = useCallback(async () => {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -882,7 +987,13 @@ export default function Files() {
             return <DirItem item={item} onPress={handleNavigateUp} />;
         }
         if (item._isDir) {
-            return <DirItem item={item} onPress={() => handleDirPress(item.name)} />;
+            return (
+                <DirItem
+                    item={item}
+                    onPress={() => handleDirPress(item.name)}
+                    onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
+                />
+            );
         }
         const canEdit = isEditableFile(item.name);
         return (
