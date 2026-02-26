@@ -11,12 +11,12 @@ import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, Dimensions, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Snackbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
-const ASSET_ITEM_SIZE = (width - 48) / COLUMN_COUNT;
+const ASSET_ITEM_SIZE = (width - 48) / COLUMN_COUNT - 0.5; // Subtract 0.5 to avoid rounding issues causing wrap
 
 // Enable LayoutAnimation on Android
 
@@ -336,6 +336,62 @@ const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRen
                 </View>
             </TouchableRipple>
         </Surface>
+    );
+});
+
+const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
+    const theme = useTheme();
+    const opacity = useSharedValue(0.1);
+
+    useEffect(() => {
+        opacity.value = withRepeat(
+            withSequence(
+                withTiming(0.25, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0.1, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+            ),
+            -1,
+            true
+        );
+    }, [opacity]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        opacity: opacity.value,
+    }));
+
+    if (isGrid) {
+        return (
+            <Animated.View style={[animatedStyle, { width: ASSET_ITEM_SIZE, height: ASSET_ITEM_SIZE, margin: 8, borderRadius: 16, backgroundColor: theme.colors.onSurfaceVariant }]} />
+        );
+    }
+
+    return (
+        <View style={{ borderRadius: 16, marginVertical: 4, height: 72, overflow: 'hidden', paddingHorizontal: 16 }}>
+            <Animated.View style={[animatedStyle, { flex: 1, backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 16 }]} />
+        </View>
+    );
+});
+
+const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
+    const items = Array.from({ length: isGrid ? 16 : 12 });
+    if (isGrid) {
+        const rows = [];
+        for (let i = 0; i < items.length; i += 2) {
+            rows.push(items.slice(i, i + 2));
+        }
+        return (
+            <View style={{ width: '100%' }}>
+                {rows.map((row, i) => (
+                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'center', width: '100%' }}>
+                        {row.map((_, j) => <SkeletonItem key={j} isGrid />)}
+                    </View>
+                ))}
+            </View>
+        );
+    }
+    return (
+        <View style={{ paddingHorizontal: 0, width: '100%' }}>
+            {items.map((_, i) => <SkeletonItem key={i} />)}
+        </View>
     );
 });
 
@@ -1143,16 +1199,12 @@ export default function Files() {
                             renderItem={renderPostItem}
                             ListFooterComponent={
                                 (isLoading && filteredFiles.length > 0) ? (
-                                    <View style={{ padding: 16, alignItems: 'center' }}>
-                                        <ActivityIndicator size="small" color={theme.colors.primary} />
-                                    </View>
+                                    <ListingSkeleton />
                                 ) : null
                             }
                             ListEmptyComponent={
                                 isLoading ? (
-                                    <View style={styles.emptyState}>
-                                        <ActivityIndicator size="large" color={theme.colors.primary} />
-                                    </View>
+                                    <ListingSkeleton />
                                 ) : (hasLoadedPosts ? (
                                     <View style={styles.emptyState}>
                                         <Avatar.Icon size={64} icon="file-search-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
@@ -1193,16 +1245,12 @@ export default function Files() {
                             renderItem={renderAssetItem}
                             ListFooterComponent={
                                 (isLoading && filteredAssets.length > 0) ? (
-                                    <View style={{ padding: 16, alignItems: 'center', width: Dimensions.get('window').width }}>
-                                        <ActivityIndicator size="small" color={theme.colors.primary} />
-                                    </View>
+                                    <ListingSkeleton isGrid />
                                 ) : null
                             }
                             ListEmptyComponent={
                                 isLoading ? (
-                                    <View style={styles.emptyState}>
-                                        <ActivityIndicator size="large" color={theme.colors.primary} />
-                                    </View>
+                                    <ListingSkeleton isGrid />
                                 ) : (hasLoadedAssets ? (
                                     <View style={styles.emptyState}>
                                         <Avatar.Icon size={64} icon="image-off-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />

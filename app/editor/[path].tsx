@@ -7,16 +7,16 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
 import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, TextInput, useTheme } from 'react-native-paper';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../../context/AppContext';
 
 const { width } = Dimensions.get('window');
 const COLUMN_COUNT = 2;
-const ITEM_SIZE = (width - 32) / COLUMN_COUNT; // Slightly smaller since it's within a tab
+const ITEM_SIZE = (width - 40) / COLUMN_COUNT - 0.5; // Account for 4px grid padding + 8px item margins
 
 // Inline sliding tab container
 const SlidingTabContainer = ({ children, selectedIndex }: { children: React.ReactNode[]; selectedIndex: number }) => {
@@ -125,6 +125,62 @@ const MemoizedMarkdownImage = React.memo(({ uri, headers, alt, theme }: any) => 
         prev.alt === next.alt &&
         prev.theme.colors.surfaceVariant === next.theme.colors.surfaceVariant &&
         JSON.stringify(prev.headers) === JSON.stringify(next.headers);
+});
+
+const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
+    const theme = useTheme();
+    const opacity = useSharedValue(0.1);
+
+    useEffect(() => {
+        opacity.value = withRepeat(
+            withSequence(
+                withTiming(0.25, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0.1, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+            ),
+            -1,
+            true
+        );
+    }, [opacity]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        opacity: opacity.value,
+    }));
+
+    if (isGrid) {
+        return (
+            <Animated.View style={[animatedStyle, { width: ITEM_SIZE, height: ITEM_SIZE, margin: 8, borderRadius: 16, backgroundColor: theme.colors.onSurfaceVariant }]} />
+        );
+    }
+
+    return (
+        <View style={{ borderRadius: 16, marginVertical: 4, height: 72, overflow: 'hidden', paddingHorizontal: 16 }}>
+            <Animated.View style={[animatedStyle, { flex: 1, backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 16 }]} />
+        </View>
+    );
+});
+
+const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
+    const items = Array.from({ length: isGrid ? 12 : 8 });
+    if (isGrid) {
+        const rows = [];
+        for (let i = 0; i < items.length; i += 2) {
+            rows.push(items.slice(i, i + 2));
+        }
+        return (
+            <View style={{ width: '100%' }}>
+                {rows.map((row, i) => (
+                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'center', width: '100%' }}>
+                        {row.map((_, j) => <SkeletonItem key={j} isGrid />)}
+                    </View>
+                ))}
+            </View>
+        );
+    }
+    return (
+        <View style={{ paddingHorizontal: 0, width: '100%' }}>
+            {items.map((_, i) => <SkeletonItem key={i} />)}
+        </View>
+    );
 });
 
 // Sub-component for Assets Manager
@@ -248,7 +304,11 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
     };
 
     if (isLoading && assets.length === 0) {
-        return <View style={{ flex: 1 }} />;
+        return (
+            <ScrollView contentContainerStyle={styles.assetsGrid}>
+                <ListingSkeleton isGrid />
+            </ScrollView>
+        );
     }
 
     if (fetchError || assets.length === 0) {
