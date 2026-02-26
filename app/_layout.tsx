@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useMemo } from 'react';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider, adaptNavigationTheme } from 'react-native-paper';
 import 'react-native-reanimated';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider } from '../context/AppContext';
 
 export const unstable_settings = {
@@ -26,7 +27,9 @@ export default function RootLayout() {
 
   const { NavigationTheme, PaperTheme } = useMemo(() => {
     const isDark = colorScheme === 'dark';
-    const paperTheme = isDark ? { ...MD3DarkTheme, colors: theme.dark } : { ...MD3LightTheme, colors: theme.light };
+    const paperTheme = isDark
+      ? { ...MD3DarkTheme, colors: { ...MD3DarkTheme.colors, ...theme.dark } }
+      : { ...MD3LightTheme, colors: { ...MD3LightTheme.colors, ...theme.light } };
     const { LightTheme, DarkTheme: NavDarkTheme } = adaptNavigationTheme({
       reactNavigationLight: DefaultTheme,
       reactNavigationDark: DarkTheme,
@@ -54,17 +57,19 @@ export default function RootLayout() {
   }, [NavigationTheme.colors.background]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <AppProvider>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
         <PaperProvider theme={PaperTheme}>
-          <ThemeProvider value={NavigationTheme}>
-            <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
-              <Stack.Screen name="index" />
-            </Stack>
-            <StatusBar style="auto" />
-          </ThemeProvider>
+          <AppProvider>
+            <ThemeProvider value={NavigationTheme}>
+              <Stack screenOptions={{ headerShown: false, animation: 'slide_from_right' }}>
+                <Stack.Screen name="index" />
+              </Stack>
+              <StatusBar style="auto" />
+            </ThemeProvider>
+          </AppProvider>
         </PaperProvider>
-      </AppProvider>
-    </GestureHandlerRootView>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

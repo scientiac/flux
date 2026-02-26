@@ -10,7 +10,7 @@ import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
-import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Snackbar, Surface, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Surface, TextInput, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../../context/AppContext';
 
@@ -478,7 +478,7 @@ export default function Editor() {
     const isLocalDraft = decodedPath.startsWith('draft_');
     const draftId = isLocalDraft ? decodedPath.replace('draft_', '') : null;
 
-    const { config, localDrafts, saveDraft, deleteDraft, setRepoAssetCache, assetCache } = useAppContext();
+    const { config, localDrafts, saveDraft, deleteDraft, setRepoAssetCache, assetCache, showToast } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
 
@@ -509,8 +509,6 @@ export default function Editor() {
     // Commit UI states
     const [isCommitModalVisible, setIsCommitModalVisible] = useState(false);
 
-    const [snackbarVisible, setSnackbarVisible] = useState(false);
-    const [snackbarMsg, setSnackbarMsg] = useState('');
     const [githubToken, setGithubToken] = useState<string | null>(null);
 
     const inputRef = useRef<NativeTextInput>(null);
@@ -802,8 +800,7 @@ export default function Editor() {
             if (isLocalDraft && draftId) {
                 await deleteDraft(draftId);
             }
-            setSnackbarMsg('Published to GitHub');
-            setSnackbarVisible(true);
+            showToast('Published to GitHub', 'success');
 
             // Redirect to the new post URL if it was a draft
             if (isLocalDraft) {
@@ -812,8 +809,7 @@ export default function Editor() {
         } catch (e: any) {
             console.error('[Editor] Save failed', e);
             const githubError = e.response?.data?.message || e.message || 'Unknown error';
-            setSnackbarMsg(`Save failed: ${githubError}`);
-            setSnackbarVisible(true);
+            showToast(`Save failed: ${githubError}`, 'error');
         } finally {
             setIsSaving(false);
         }
@@ -852,16 +848,14 @@ export default function Editor() {
                 dirPath: currentDirPath
             });
 
-            setSnackbarMsg('Draft saved locally');
-            setSnackbarVisible(true);
+            showToast('Draft saved locally', 'success');
 
             // If it was a new post being saved as draft, redirect unless suppressing
             if (!isLocalDraft && shouldRedirect) {
                 router.replace(`/editor/draft_${id}`);
             }
         } catch (e: any) {
-            setSnackbarMsg(`Draft save failed: ${e.message}`);
-            setSnackbarVisible(true);
+            showToast(`Draft save failed: ${e.message}`, 'error');
         } finally {
             setIsSaving(false);
         }
@@ -893,8 +887,7 @@ export default function Editor() {
 
         setIsImageNameVisible(false); // Close dialog first
         setIsUploading(true);
-        setSnackbarMsg('Uploading image...');
-        setSnackbarVisible(true);
+        // showToast('Uploading image...', 'info'); // Maybe too noisy? The button has loading state.
 
         const finalName = name.includes('.') ? name : `${name}.jpg`;
         const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
@@ -968,15 +961,14 @@ export default function Editor() {
             // Insert Markdown
             const newContent = content.substring(0, selection.start) + `![${finalName}](${relativePath})` + content.substring(selection.end);
             setContent(newContent);
-            setSnackbarMsg('Image uploaded and inserted');
+            showToast('Image uploaded and inserted', 'success');
             setLastPickedUri(null);
 
         } catch (e: any) {
             console.error('Upload failed', e);
-            setSnackbarMsg(`Upload failed: ${e.message}`);
+            showToast(`Upload failed: ${e.message}`, 'error');
         } finally {
             setIsUploading(false);
-            setSnackbarVisible(true);
         }
     };
 
@@ -1149,15 +1141,6 @@ export default function Editor() {
                     initialFilename={title}
                 />
             </Portal>
-
-            <Snackbar
-                visible={snackbarVisible}
-                onDismiss={() => setSnackbarVisible(false)}
-                duration={3000}
-                style={{ backgroundColor: theme.colors.secondaryContainer, borderRadius: 12 }}
-            >
-                <PaperText style={{ color: theme.colors.onSecondaryContainer }}>{snackbarMsg}</PaperText>
-            </Snackbar>
         </KeyboardAvoidingView>
     );
 }

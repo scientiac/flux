@@ -4,11 +4,11 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { BackHandler, ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Button, Dialog, HelperText, Portal, Snackbar, Switch, Text, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, HelperText, Portal, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 
 export default function Config() {
-    const { config, updateRepoConfig, removeRepoConfig } = useAppContext();
+    const { config, updateRepoConfig, removeRepoConfig, showToast } = useAppContext();
     const theme = useTheme();
     const router = useRouter();
     const { from } = useLocalSearchParams();
@@ -27,10 +27,6 @@ export default function Config() {
 
     // Remove confirmation dialog
     const [removeDialogVisible, setRemoveDialogVisible] = useState(false);
-
-    // Snackbar
-    const [snackbarVisible, setSnackbarVisible] = useState(false);
-    const [snackbarMsg, setSnackbarMsg] = useState('');
 
     useEffect(() => {
         if (currentRepoConfig) {
@@ -85,7 +81,7 @@ export default function Config() {
                 }
             }
 
-            await updateRepoConfig(repoPath, {
+            updateRepoConfig(repoPath, {
                 contentDir: cleanContentDir,
                 useStaticFolder,
                 staticDir: cleanStaticDir,
@@ -94,15 +90,13 @@ export default function Config() {
                 siteUrl: siteUrl.trim(),
                 showAdvancedFiles
             });
-            setSnackbarMsg('Settings saved successfully');
-            setSnackbarVisible(true);
+            showToast('Settings saved successfully', 'success');
             setTimeout(() => {
                 if (from === 'dashboard') router.back();
                 else router.replace('/files');
             }, 1000);
         } catch (e: any) {
-            setSnackbarMsg(e.message || 'Validation failed');
-            setSnackbarVisible(true);
+            showToast(e.message || 'Validation failed', 'error');
         } finally {
             setIsValidating(false);
         }
@@ -127,10 +121,9 @@ export default function Config() {
         if (!repoPath) return;
         setRemoveDialogVisible(false);
         await removeRepoConfig(repoPath);
-        setSnackbarMsg('Site removed from Flux');
-        setSnackbarVisible(true);
+        showToast('Site removed from Flux', 'success');
         setTimeout(() => router.replace('/'), 800);
-    }, [repoPath, removeRepoConfig, setSnackbarMsg, setSnackbarVisible, router]);
+    }, [repoPath, removeRepoConfig, showToast, router]);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
@@ -285,15 +278,6 @@ export default function Config() {
                     </Dialog.Actions>
                 </Dialog>
             </Portal>
-
-            <Snackbar
-                visible={snackbarVisible}
-                onDismiss={() => setSnackbarVisible(false)}
-                duration={3000}
-                style={{ backgroundColor: theme.colors.secondaryContainer, borderRadius: 12 }}
-            >
-                <Text style={{ color: theme.colors.onSecondaryContainer }}>{snackbarMsg}</Text>
-            </Snackbar>
         </View>
     );
 }
