@@ -55,9 +55,14 @@ const formatBytes = (bytes: number, decimals = 2) => {
 };
 
 // Sub-component for Image Naming Dialog
-const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, size }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string, size?: number }) => {
+const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, extension, size }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string, extension: string, size?: number }) => {
     const [localValue, setLocalValue] = useState(initialValue);
-    useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
+
+    useEffect(() => {
+        if (visible) {
+            setLocalValue(initialValue);
+        }
+    }, [visible, initialValue]);
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss}>
@@ -69,6 +74,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, size }: 
                     onChangeText={setLocalValue}
                     mode="flat"
                     autoFocus
+                    right={extension ? <TextInput.Affix text={'.' + extension} /> : null}
                 />
                 {size ? (
                     <PaperText variant="bodySmall" style={{ marginTop: 8, opacity: 0.6, textAlign: 'right' }}>
@@ -643,6 +649,7 @@ export default function Editor() {
     // const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({}); // Removed pending, we upload immediately
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
     const [pickedFilename, setPickedFilename] = useState('');
+    const [pickedAssetExtension, setPickedAssetExtension] = useState('');
     const [pickedAssetSize, setPickedAssetSize] = useState<number | undefined>();
     const [pickedAssetType, setPickedAssetType] = useState<'image' | 'video' | 'file'>('image');
     const [isAssetTypeVisible, setIsAssetTypeVisible] = useState(false);
@@ -1087,7 +1094,11 @@ export default function Editor() {
                         uri = resized.uri;
                     }
                     setLastPickedUri(uri);
-                    setPickedFilename(asset.fileName || '');
+                    const originalName = asset.fileName || '';
+                    const parts = originalName.split('.');
+                    const ext = parts.pop() || '';
+                    setPickedFilename('');
+                    setPickedAssetExtension(ext);
                     setPickedAssetSize(asset.fileSize);
                     setIsImageNameVisible(true);
                 }
@@ -1100,7 +1111,11 @@ export default function Editor() {
                 if (!result.canceled && result.assets && result.assets.length > 0) {
                     const asset = result.assets[0];
                     setLastPickedUri(asset.uri);
-                    setPickedFilename(asset.name);
+                    const originalName = asset.name || '';
+                    const parts = originalName.split('.');
+                    const ext = parts.pop() || '';
+                    setPickedFilename('');
+                    setPickedAssetExtension(ext);
                     setPickedAssetSize(asset.size);
                     setIsImageNameVisible(true);
                 }
@@ -1133,8 +1148,7 @@ export default function Editor() {
         setIsImageNameVisible(false);
         setIsUploading(true);
 
-        const ext = name.split('.').pop()?.toLowerCase();
-        const finalName = name.includes('.') ? name : `${name}.${ext || (pickedAssetType === 'image' ? 'jpg' : 'bin')}`;
+        const finalName = name.endsWith(`.${pickedAssetExtension}`) ? name : `${name}.${pickedAssetExtension}`;
         const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
         const staticPath = repoConfig.useStaticFolder !== false ? repoConfig.staticDir.replace(/^\/+|\/+$/g, '') : '';
 
@@ -1422,6 +1436,7 @@ export default function Editor() {
                     onDismiss={() => setIsImageNameVisible(false)}
                     onConfirm={confirmAsset}
                     initialValue={pickedFilename}
+                    extension={pickedAssetExtension}
                     size={pickedAssetSize}
                 />
 

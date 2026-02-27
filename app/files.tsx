@@ -70,10 +70,15 @@ const formatBytes = (bytes: number, decimals = 2) => {
 };
 
 // Sub-component for Image Naming Dialog
-const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, size }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string, size?: number }) => {
+const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, extension, size }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string, extension: string, size?: number }) => {
     const theme = useTheme();
     const [localValue, setLocalValue] = useState(initialValue);
-    useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
+
+    useEffect(() => {
+        if (visible) {
+            setLocalValue(initialValue);
+        }
+    }, [visible, initialValue]);
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
@@ -86,6 +91,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, size }: 
                     mode="flat"
                     autoFocus
                     style={{ backgroundColor: theme.colors.surfaceVariant }}
+                    right={extension ? <TextInput.Affix text={'.' + extension} /> : null}
                 />
                 {size ? (
                     <Text variant="bodySmall" style={{ marginTop: 8, opacity: 0.6, textAlign: 'right' }}>
@@ -554,6 +560,7 @@ export default function Files() {
     const [isAssetTypeVisible, setIsAssetTypeVisible] = useState(false);
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
     const [pickedFilename, setPickedFilename] = useState('');
+    const [pickedAssetExtension, setPickedAssetExtension] = useState('');
     const [pickedAssetSize, setPickedAssetSize] = useState<number | undefined>();
     const [isUploading, setIsUploading] = useState(false);
     const [pendingImage, setPendingImage] = useState<any>(null); // Keep for some logic if needed
@@ -1109,7 +1116,11 @@ export default function Files() {
                         uri = resized.uri;
                     }
                     setLastPickedUri(uri);
-                    setPickedFilename(asset.fileName || '');
+                    const originalName = asset.fileName || '';
+                    const parts = originalName.split('.');
+                    const ext = parts.pop() || '';
+                    setPickedFilename('');
+                    setPickedAssetExtension(ext);
                     setPickedAssetSize(asset.fileSize);
                     setIsImageNameVisible(true);
                 }
@@ -1122,7 +1133,11 @@ export default function Files() {
                 if (!result.canceled && result.assets && result.assets.length > 0) {
                     const asset = result.assets[0];
                     setLastPickedUri(asset.uri);
-                    setPickedFilename(asset.name);
+                    const originalName = asset.name || '';
+                    const parts = originalName.split('.');
+                    const ext = parts.pop() || '';
+                    setPickedFilename('');
+                    setPickedAssetExtension(ext);
                     setPickedAssetSize(asset.size);
                     setIsImageNameVisible(true);
                 }
@@ -1139,8 +1154,7 @@ export default function Files() {
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const ext = name.split('.').pop()?.toLowerCase();
-            const finalName = name.includes('.') ? name : `${name}.${ext || (pickedAssetType === 'image' ? 'jpg' : 'bin')}`;
+            const finalName = name.endsWith(`.${pickedAssetExtension}`) ? name : `${name}.${pickedAssetExtension}`;
 
             const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
             const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
@@ -1454,6 +1468,7 @@ export default function Files() {
                     onDismiss={() => setIsImageNameVisible(false)}
                     onConfirm={confirmAssetUpload}
                     initialValue={pickedFilename}
+                    extension={pickedAssetExtension}
                     size={pickedAssetSize}
                 />
 
