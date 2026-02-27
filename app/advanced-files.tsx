@@ -3,7 +3,7 @@ import axios from 'axios';
 import { Buffer } from 'buffer';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import { BackHandler, Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
@@ -167,8 +167,10 @@ const FileItem = memo(({ item, onRename, onDelete, onCopy, onMove, onPress }: { 
 export default function AdvancedFiles() {
     const theme = useTheme();
     const router = useRouter();
+    const { repo: repoParam } = useLocalSearchParams();
     const { config, showToast } = useAppContext();
-    const repoPath = config.repo;
+    const repoPath = (repoParam as string) || config.repo;
+    const isConfigured = repoPath ? !!config.repoConfigs[repoPath] : false;
 
     const [currentPath, setCurrentPath] = useState('');
     const [items, setItems] = useState<any[]>([]);
@@ -430,7 +432,7 @@ export default function AdvancedFiles() {
             }, { headers: { Authorization: `token ${token}` } });
             showToast('File created', 'success');
             fetchItems();
-            router.push(`/editor/${encodeURIComponent(path)}`);
+            router.push(`/editor/${encodeURIComponent(path)}?repo=${encodeURIComponent(repoPath)}`);
         } catch (e: any) {
             showToast('Creation failed', 'error');
             setItems(previousItems);
@@ -510,7 +512,11 @@ export default function AdvancedFiles() {
                 } else {
                     // Restrict editing to .md files only
                     if (item.name.toLowerCase().endsWith('.md')) {
-                        router.push(`/editor/${encodeURIComponent(item.path)}`);
+                        if (isConfigured) {
+                            router.push(`/editor/${encodeURIComponent(item.path)}?repo=${encodeURIComponent(repoPath || '')}`);
+                        } else {
+                            showToast('Setup this repo as a site to enable editing', 'info');
+                        }
                     } else {
                         showToast('Only .md files can be edited', 'info');
                     }
@@ -586,7 +592,9 @@ export default function AdvancedFiles() {
             )}
             <View style={styles.fabContainer}>
                 <FAB icon="folder-plus" style={[styles.fab, { backgroundColor: theme.colors.secondaryContainer }]} onPress={() => setIsNewDirVisible(true)} />
-                <FAB icon="file-plus" style={[styles.fab, { backgroundColor: theme.colors.primaryContainer }]} onPress={() => setIsNewFileVisible(true)} />
+                {isConfigured && (
+                    <FAB icon="file-plus" style={[styles.fab, { backgroundColor: theme.colors.primaryContainer }]} onPress={() => setIsNewFileVisible(true)} />
+                )}
                 <FAB icon="upload" style={[styles.fab, { backgroundColor: theme.colors.primary }]} color="white" onPress={handlePickFile} />
             </View>
 

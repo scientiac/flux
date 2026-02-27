@@ -618,7 +618,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
 
 
 export default function Editor() {
-    const { path, new: isNewParam, title: titleParam } = useLocalSearchParams();
+    const { path, new: isNewParam, title: titleParam, repo: repoParam } = useLocalSearchParams();
     const isNew = isNewParam === 'true';
     const decodedPath = decodeURIComponent(path as string);
     const isLocalDraft = decodedPath.startsWith('draft_');
@@ -628,7 +628,7 @@ export default function Editor() {
     const theme = useTheme();
     const router = useRouter();
 
-    const repoPath = config.repo;
+    const repoPath = (repoParam as string) || config.repo;
     const repoConfig = repoPath ? config.repoConfigs[repoPath] : null;
 
     const [content, setContent] = useState('');

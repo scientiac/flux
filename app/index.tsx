@@ -1,4 +1,5 @@
 import axios from 'axios';
+import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -141,6 +142,10 @@ export default function Index() {
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.surface }}>
             <TouchableRipple
                 onPress={() => handleRepoSelect(item.full_name)}
+                onLongPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    router.push(`/advanced-files?repo=${item.full_name}`);
+                }}
                 rippleColor={theme.colors.onSurfaceVariant + '1F'}
                 borderless={true}
                 style={styles.ripple}
@@ -248,6 +253,10 @@ export default function Index() {
                                 <Surface key={item.id} elevation={2} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.primaryContainer }}>
                                     <TouchableRipple
                                         onPress={() => handleRepoSelect(item.full_name)}
+                                        onLongPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                                            router.push(`/advanced-files?repo=${item.full_name}`);
+                                        }}
                                         rippleColor={theme.colors.onPrimaryContainer + '1F'}
                                         borderless={true}
                                         style={styles.ripple}
