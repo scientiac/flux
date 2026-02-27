@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
@@ -9,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, Linking, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
 import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Surface, TextInput, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
@@ -714,6 +715,13 @@ export default function Editor() {
         list_item: {
             marginVertical: 4,
         },
+        handwriting: {
+            fontFamily: Platform.select({ ios: 'Bradley Hand', android: 'cursive', default: 'cursive' }),
+            fontSize: Platform.select({ ios: 18, default: 16 }),
+            textDecorationLine: 'underline',
+            fontWeight: '300',
+            letterSpacing: 0.5,
+        },
     }), [theme]);
 
     // Stabilize headers for image rendering to prevent refetches
@@ -767,6 +775,46 @@ export default function Editor() {
         },
         softbreak: (node: any, children: any, parent: any, styles: any) => {
             return <PaperText key={node.key}> </PaperText>;
+        },
+        text: (node: any, children: any, parent: any, styles: any) => {
+            const content = node.content;
+            // Split into parts to handle custom markers
+            const parts = content.split(/(\[\[(?:HW|LIKE|REPLY):.*?\]\])/g);
+
+            return (
+                <PaperText key={node.key}>
+                    {parts.map((part: string, i: number) => {
+                        const hwMatch = part.match(/^\[\[HW:(.*?)\]\]$/);
+                        if (hwMatch) {
+                            return <PaperText key={i} style={styles.handwriting}>{hwMatch[1]}</PaperText>;
+                        }
+
+                        const likeMatch = part.match(/^\[\[LIKE:(.*?)\|(.*?)\]\]$/);
+                        if (likeMatch) {
+                            const [url, label] = [likeMatch[1], likeMatch[2]];
+                            return (
+                                <PaperText key={i} onPress={() => Linking.openURL(url)}>
+                                    <MaterialCommunityIcons name="heart" size={16} color={theme.colors.error} />
+                                    <PaperText style={styles.link}>{' '}{label}</PaperText>
+                                </PaperText>
+                            );
+                        }
+
+                        const replyMatch = part.match(/^\[\[REPLY:(.*?)\|(.*?)\]\]$/);
+                        if (replyMatch) {
+                            const [url, label] = [replyMatch[1], replyMatch[2]];
+                            return (
+                                <PaperText key={i} onPress={() => Linking.openURL(url)}>
+                                    <MaterialCommunityIcons name="reply" size={16} color={theme.colors.primary} />
+                                    <PaperText style={styles.link}>{' '}{label}</PaperText>
+                                </PaperText>
+                            );
+                        }
+
+                        return part;
+                    })}
+                </PaperText>
+            );
         },
     }), [repoPath, repoConfig, imageHeaders, theme]);
 
@@ -1089,7 +1137,13 @@ export default function Editor() {
             // Wait for snackbar to be visible
             await new Promise(resolve => setTimeout(resolve, 800));
         }
-        router.back();
+
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            // Fallback to files if we're at the root (prevents closing app)
+            router.replace('/files');
+        }
     }, [isLocalDraft, handleSaveLocal, router]);
 
     // Handle System Back Button
@@ -1108,7 +1162,11 @@ export default function Editor() {
         // Clear autosave
         await AsyncStorage.removeItem(AUTOSAVE_KEY);
         // Just go back without saving
-        router.back();
+        if (router.canGoBack()) {
+            router.back();
+        } else {
+            router.replace('/files');
+        }
     };
 
     return (
@@ -1164,7 +1222,18 @@ export default function Editor() {
                         if (val !== 'edit') Keyboard.dismiss();
                         if (val === 'preview') {
                             // Strip frontmatter (YAML or TOML) for preview
-                            const clean = content.replace(/^---\s*[\s\S]*?\n---\s*\n?/, '').replace(/^\+\+\+\s*[\s\S]*?\n\+\+\+\s*\n?/, '');
+                            let clean = content.replace(/^---\s*[\s\S]*?\n---\s*\n?/, '').replace(/^\+\+\+\s*[\s\S]*?\n\+\+\+\s*\n?/, '');
+
+                            // Custom pre-processing for handwriting and webmention links
+                            // [_Text_] -> [[HW:Text]]
+                            clean = clean.replace(/\[_([\s\S]*?)_\]/g, '[[HW:$1]]');
+
+                            // <a class="u-like-of" href="url">text</a> -> [[LIKE:url|text]]
+                            clean = clean.replace(/<a class="u-like-of" href="([^"]+)">(.*?)<\/a>/g, '[[LIKE:$1|$2]]');
+
+                            // <a class="u-in-reply-to" href="url">text</a> -> [[REPLY:url|text]]
+                            clean = clean.replace(/<a class="u-in-reply-to" href="([^"]+)">(.*?)<\/a>/g, '[[REPLY:$1|$2]]');
+
                             setPreviewContent(clean);
                         }
                         setMode(val);
