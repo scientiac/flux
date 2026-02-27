@@ -1234,10 +1234,20 @@ export default function Editor() {
     };
 
     const handleInsertAsset = (item: any) => {
-        if (!repoConfig) return;
         const filename = item.name;
-        const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
-        const relativePath = `/${[assetsPath, filename].filter(Boolean).join('/')}`;
+        const isConfigured = !!repoConfig;
+        const contentDirClean = repoConfig?.contentDir.replace(/^\/+|\/+$/g, '') || '';
+        const isUnderContent = isConfigured && decodedPath.startsWith(contentDirClean) && contentDirClean !== '';
+
+        let relativePath;
+        if (isUnderContent && repoConfig) {
+            const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
+            relativePath = `/${[assetsPath, filename].filter(Boolean).join('/')}`;
+        } else {
+            // Exact repo path for non-content files or unconfigured repos
+            relativePath = `/${item.path}`;
+        }
+
         const isImg = filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
         const markdown = isImg ? `![${filename}](${relativePath})` : `[${filename}](${relativePath})`;
         const newContent = content.substring(0, selection.start) + markdown + content.substring(selection.end);
