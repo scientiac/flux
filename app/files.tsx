@@ -1299,15 +1299,21 @@ export default function Files() {
                 >
                     Repos
                 </Button>
-                <Button
-                    icon="cog-outline"
-                    mode="text"
-                    compact
-                    onPress={() => router.push('/config?from=dashboard')}
-                    style={{ marginRight: 12 }}
-                >
-                    Settings
-                </Button>
+                <View>
+                    <Button
+                        icon="cog-outline"
+                        mode="text"
+                        compact
+                        onPress={() => router.push('/config?from=dashboard')}
+                        onLongPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+                            router.push('/advanced-files');
+                        }}
+                        style={{ marginRight: 12 }}
+                    >
+                        Settings
+                    </Button>
+                </View>
             </Appbar.Header>
 
             <View style={styles.tabContainer}>
@@ -1531,21 +1537,25 @@ export default function Files() {
             <FAB
                 icon={mode === 'posts' ? 'file-document-outline' : mode === 'drafts' ? 'pencil-box-outline' : 'file-plus-outline'}
                 label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Asset'}
-                style={[styles.fab, !repoConfig?.siteUrl && { right: 16 }]}
+                style={styles.fab}
                 onPress={handleAction}
             />
 
-            {repoConfig?.siteUrl ? (
-                <FAB
-                    icon="web"
-                    style={styles.fabSecondary}
-                    onPress={() => Linking.openURL(repoConfig.siteUrl!)}
-                    onLongPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            <FAB
+                icon="web"
+                style={styles.fabSecondary}
+                onPress={() => {
+                    if (repoConfig?.siteUrl) {
+                        Linking.openURL(repoConfig.siteUrl);
+                    } else {
                         Linking.openURL(`https://github.com/${repoPath}`);
-                    }}
-                />
-            ) : null}
+                    }
+                }}
+                onLongPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    Linking.openURL(`https://github.com/${repoPath}`);
+                }}
+            />
         </View >
     );
 }

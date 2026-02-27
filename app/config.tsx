@@ -320,6 +320,16 @@ export default function Config() {
                     <Switch value={showAdvancedFiles} onValueChange={setShowAdvancedFiles} />
                 </View>
 
+                <Surface elevation={1} style={{ padding: 16, borderRadius: 20, backgroundColor: theme.colors.primaryContainer + '33', marginTop: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: theme.colors.primary }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <IconButton icon="auto-fix" iconColor={theme.colors.primary} size={24} />
+                        <View style={{ flex: 1 }}>
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
+                                Long-press the <Text style={{ fontWeight: 'bold' }}>Settings</Text> icon on the dashboard to enter <Text style={{ fontWeight: 'bold' }}>Advanced Mode</Text> for full repository file management and do the same to the <Text style={{ fontWeight: 'bold' }}>Globe</Text> icon on the dashboard to visit the <Text style={{ fontWeight: 'bold' }}>GitHub repository.</Text>.
+                            </Text>
+                        </View>
+                    </View>
+                </Surface>
 
             </ScrollView>
 
