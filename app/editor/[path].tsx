@@ -45,8 +45,17 @@ const SlidingTabContainer = ({ children, selectedIndex }: { children: React.Reac
 };
 
 
+const formatBytes = (bytes: number, decimals = 2) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
 // Sub-component for Image Naming Dialog
-const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string }) => {
+const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, size }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string, size?: number }) => {
     const [localValue, setLocalValue] = useState(initialValue);
     useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
 
@@ -61,6 +70,11 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
                     mode="flat"
                     autoFocus
                 />
+                {size ? (
+                    <PaperText variant="bodySmall" style={{ marginTop: 8, opacity: 0.6, textAlign: 'right' }}>
+                        File size: {formatBytes(size)}
+                    </PaperText>
+                ) : null}
             </Dialog.Content>
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
@@ -450,10 +464,8 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
 
         const oldAsset = { ...selectedAsset };
         const previousAssets = [...assets];
-        const cleanStatic = repoConfig.useStaticFolder !== false ? staticDir.replace(/^\/+|\/+$/g, '') : '';
-        const cleanAssets = assetsDir.replace(/^\/+|\/+$/g, '');
-        const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
-        const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+        const parentDir = oldAsset.path.includes('/') ? oldAsset.path.substring(0, oldAsset.path.lastIndexOf('/')) : '';
+        const newPath = parentDir ? `${parentDir}/${cleanName}`.replace(/\/+/g, '/') : cleanName;
 
         // Optimistically update UI
         const optimisticAssets = assets.map(a => a.path === oldAsset.path ? { ...a, name: cleanName, path: newPath } : a);
@@ -631,6 +643,7 @@ export default function Editor() {
     // const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({}); // Removed pending, we upload immediately
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
     const [pickedFilename, setPickedFilename] = useState('');
+    const [pickedAssetSize, setPickedAssetSize] = useState<number | undefined>();
     const [pickedAssetType, setPickedAssetType] = useState<'image' | 'video' | 'file'>('image');
     const [isAssetTypeVisible, setIsAssetTypeVisible] = useState(false);
     const [isImageNameVisible, setIsImageNameVisible] = useState(false);
@@ -1075,6 +1088,7 @@ export default function Editor() {
                     }
                     setLastPickedUri(uri);
                     setPickedFilename(asset.fileName || '');
+                    setPickedAssetSize(asset.fileSize);
                     setIsImageNameVisible(true);
                 }
             } else {
@@ -1087,6 +1101,7 @@ export default function Editor() {
                     const asset = result.assets[0];
                     setLastPickedUri(asset.uri);
                     setPickedFilename(asset.name);
+                    setPickedAssetSize(asset.size);
                     setIsImageNameVisible(true);
                 }
             }
@@ -1407,6 +1422,7 @@ export default function Editor() {
                     onDismiss={() => setIsImageNameVisible(false)}
                     onConfirm={confirmAsset}
                     initialValue={pickedFilename}
+                    size={pickedAssetSize}
                 />
 
                 <CommitDialog

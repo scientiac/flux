@@ -60,8 +60,17 @@ const formatRelativeDate = (dateString: string) => {
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 };
 
+const formatBytes = (bytes: number, decimals = 2) => {
+    if (!bytes || bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
 // Sub-component for Image Naming Dialog
-const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string }) => {
+const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, size }: { visible: boolean, onDismiss: () => void, onConfirm: (val: string) => void, initialValue: string, size?: number }) => {
     const theme = useTheme();
     const [localValue, setLocalValue] = useState(initialValue);
     useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
@@ -78,6 +87,11 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
                     autoFocus
                     style={{ backgroundColor: theme.colors.surfaceVariant }}
                 />
+                {size ? (
+                    <Text variant="bodySmall" style={{ marginTop: 8, opacity: 0.6, textAlign: 'right' }}>
+                        File size: {formatBytes(size)}
+                    </Text>
+                ) : null}
             </Dialog.Content>
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
@@ -540,6 +554,7 @@ export default function Files() {
     const [isAssetTypeVisible, setIsAssetTypeVisible] = useState(false);
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
     const [pickedFilename, setPickedFilename] = useState('');
+    const [pickedAssetSize, setPickedAssetSize] = useState<number | undefined>();
     const [isUploading, setIsUploading] = useState(false);
     const [pendingImage, setPendingImage] = useState<any>(null); // Keep for some logic if needed
 
@@ -1038,10 +1053,8 @@ export default function Files() {
 
         const oldAsset = { ...selectedAsset };
         const previousAssets = [...assets];
-        const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
-        const cleanAssets = repoConfig.useStaticFolder !== false ? (repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '') : '';
-        const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
-        const newPath = `${fullAssetsPath}/${cleanName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+        const parentDir = oldAsset.path.includes('/') ? oldAsset.path.substring(0, oldAsset.path.lastIndexOf('/')) : '';
+        const newPath = parentDir ? `${parentDir}/${cleanName}`.replace(/\/+/g, '/') : cleanName;
 
         // Optimistically update UI
         const optimisticAssets = assets.map(a => a.path === oldAsset.path ? { ...a, name: cleanName, path: newPath } : a);
@@ -1097,6 +1110,7 @@ export default function Files() {
                     }
                     setLastPickedUri(uri);
                     setPickedFilename(asset.fileName || '');
+                    setPickedAssetSize(asset.fileSize);
                     setIsImageNameVisible(true);
                 }
             } else {
@@ -1109,6 +1123,7 @@ export default function Files() {
                     const asset = result.assets[0];
                     setLastPickedUri(asset.uri);
                     setPickedFilename(asset.name);
+                    setPickedAssetSize(asset.size);
                     setIsImageNameVisible(true);
                 }
             }
@@ -1439,6 +1454,7 @@ export default function Files() {
                     onDismiss={() => setIsImageNameVisible(false)}
                     onConfirm={confirmAssetUpload}
                     initialValue={pickedFilename}
+                    size={pickedAssetSize}
                 />
 
                 <RenameDialog
