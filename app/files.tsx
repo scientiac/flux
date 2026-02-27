@@ -1,6 +1,8 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -66,7 +68,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
-            <Dialog.Title>Upload Image</Dialog.Title>
+            <Dialog.Title>Upload Asset</Dialog.Title>
             <Dialog.Content>
                 <TextInput
                     label="Filename"
@@ -250,25 +252,81 @@ const PublishDraftDialog = ({ visible, onDismiss, onPublish, initialTitle }: { v
     );
 };
 
+const getAssetIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+        // Video
+        case 'mp4': case 'm4v': case 'mov': case 'avi': case 'wmv': case 'flv': case 'mkv': case 'webm':
+            return 'movie-open';
+        // Audio
+        case 'mp3': case 'wav': case 'ogg': case 'm4a': case 'aac': case 'flac':
+            return 'music';
+        // Documents
+        case 'pdf':
+            return 'file-pdf-box';
+        case 'doc': case 'docx':
+            return 'file-word';
+        case 'xls': case 'xlsx':
+            return 'file-excel';
+        case 'ppt': case 'pptx':
+            return 'file-powerpoint';
+        case 'txt': case 'md':
+            return 'file-document';
+        case 'zip': case 'rar': case '7z': case 'tar': case 'gz':
+            return 'zip-box';
+        default:
+            return 'file-question';
+    }
+};
+
+const AssetTypeDialog = ({ visible, onDismiss, onSelect }: { visible: boolean, onDismiss: () => void, onSelect: (type: 'image' | 'video' | 'file') => void }) => {
+    return (
+        <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
+            <Dialog.Title>Upload Asset</Dialog.Title>
+            <Dialog.Content>
+                <Text variant="bodyMedium" style={{ marginBottom: 16 }}>Choose the type of asset you want to upload:</Text>
+                <View style={{ gap: 8 }}>
+                    <Button mode="outlined" icon="image" onPress={() => onSelect('image')} style={{ borderRadius: 12 }}>Image</Button>
+                    <Button mode="outlined" icon="video" onPress={() => onSelect('video')} style={{ borderRadius: 12 }}>Video</Button>
+                    <Button mode="outlined" icon="file" onPress={() => onSelect('file')} style={{ borderRadius: 12 }}>Other</Button>
+                </View>
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
 // Sub-component for Asset Item
+
 const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, headers: any, onRename: () => void, onDelete: () => void }) => {
     const theme = useTheme();
     const [aspectRatio, setAspectRatio] = useState<number>(1); // Default to square until loaded
 
+    const isImage = item.name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+    const icon = getAssetIcon(item.name);
+
     return (
         <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant }]} >
             <View style={styles.assetThumbContainer}>
-                <Image
-                    source={{ uri: item.download_url, headers }}
-                    style={[styles.assetImage, { aspectRatio }]}
-                    contentFit="cover"
-                    cachePolicy="disk"
-                    onLoad={(e) => {
-                        if (e.source.width && e.source.height) {
-                            setAspectRatio(e.source.width / e.source.height);
-                        }
-                    }}
-                />
+                {isImage ? (
+                    <Image
+                        source={{ uri: item.download_url, headers }}
+                        style={[styles.assetImage, { aspectRatio }]}
+                        contentFit="cover"
+                        cachePolicy="disk"
+                        onLoad={(e) => {
+                            if (e.source.width && e.source.height) {
+                                setAspectRatio(e.source.width / e.source.height);
+                            }
+                        }}
+                    />
+                ) : (
+                    <View style={styles.assetIconPlaceholder}>
+                        <MaterialCommunityIcons name={icon as any} size={48} color={theme.colors.onSurfaceVariant} />
+                    </View>
+                )}
                 <View style={styles.assetOverlay}>
                     <IconButton
                         icon="cursor-text"
@@ -478,7 +536,12 @@ export default function Files() {
     const [selectedFile, setSelectedFile] = useState<any>(null);
 
     const [isImageNameVisible, setIsImageNameVisible] = useState(false);
-    const [pendingImage, setPendingImage] = useState<any>(null);
+    const [pickedAssetType, setPickedAssetType] = useState<'image' | 'video' | 'file'>('image');
+    const [isAssetTypeVisible, setIsAssetTypeVisible] = useState(false);
+    const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
+    const [pickedFilename, setPickedFilename] = useState('');
+    const [isUploading, setIsUploading] = useState(false);
+    const [pendingImage, setPendingImage] = useState<any>(null); // Keep for some logic if needed
 
     const [isPublishDialogVisible, setIsPublishDialogVisible] = useState(false);
     const [selectedDraft, setSelectedDraft] = useState<Draft | null>(null);
@@ -629,9 +692,9 @@ export default function Files() {
             if (activeAssetPathRef.current !== requestedPath) return;
 
             if (Array.isArray(response.data)) {
-                const imageFiles = response.data.filter((f: any) => f.type === 'file' && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i));
-                setAssets(imageFiles);
-                await setRepoAssetCache(repoPath, imageFiles);
+                const allFiles = response.data.filter((f: any) => f.type === 'file');
+                setAssets(allFiles);
+                await setRepoAssetCache(repoPath, allFiles);
             }
         } catch (e: any) {
             if (e.response?.status === 404) {
@@ -717,7 +780,7 @@ export default function Files() {
     const handleAction = useCallback(() => {
         if (mode === 'posts') setIsNewFileVisible(true);
         else if (mode === 'drafts') setIsNewDraftVisible(true);
-        else if (mode === 'assets') pickImage();
+        else if (mode === 'assets') setIsAssetTypeVisible(true);
     }, [mode]);
 
     const handleCreateDraft = useCallback(async (title: string, dirPath: string) => {
@@ -1010,33 +1073,94 @@ export default function Files() {
         }
     };
 
-    const pickImage = useCallback(async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.8 });
-        if (!result.canceled) {
-            const uri = result.assets[0].uri;
-            const filename = uri.split('/').pop() || `img_${Date.now()}.jpg`;
-            setPendingImage({ uri, filename });
-            setIsImageNameVisible(true);
-        }
-    }, []);
+    const handlePickAsset = async (type: 'image' | 'video' | 'file') => {
+        setIsAssetTypeVisible(false);
+        setPickedAssetType(type);
+        try {
+            if (type === 'image' || type === 'video') {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: type === 'image' ? ['images'] : ['videos'],
+                    allowsEditing: type === 'image',
+                    quality: 0.8,
+                });
 
-    const confirmUpload = useCallback(async (filename: string) => {
-        if (!pendingImage || !repoPath || !repoConfig) return;
+                if (!result.canceled && result.assets && result.assets.length > 0) {
+                    const asset = result.assets[0];
+                    let uri = asset.uri;
+                    if (type === 'image') {
+                        const resized = await ImageManipulator.manipulateAsync(
+                            asset.uri,
+                            [{ resize: { width: 1200 } }],
+                            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                        );
+                        uri = resized.uri;
+                    }
+                    setLastPickedUri(uri);
+                    setPickedFilename(asset.fileName || '');
+                    setIsImageNameVisible(true);
+                }
+            } else {
+                const result = await DocumentPicker.getDocumentAsync({
+                    type: '*/*',
+                    copyToCacheDirectory: true,
+                });
+
+                if (!result.canceled && result.assets && result.assets.length > 0) {
+                    const asset = result.assets[0];
+                    setLastPickedUri(asset.uri);
+                    setPickedFilename(asset.name);
+                    setIsImageNameVisible(true);
+                }
+            }
+        } catch (e) {
+            console.error('Pick failed', e);
+            showToast('Failed to pick file', 'error');
+        }
+    };
+
+    const confirmAssetUpload = useCallback(async (name: string) => {
+        if (!lastPickedUri || !name || !repoPath || !repoConfig) return;
         setIsImageNameVisible(false);
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
+            const ext = name.split('.').pop()?.toLowerCase();
+            const finalName = name.includes('.') ? name : `${name}.${ext || (pickedAssetType === 'image' ? 'jpg' : 'bin')}`;
+
             const cleanStatic = repoConfig.useStaticFolder !== false ? (repoConfig.staticDir?.replace(/^\/+|\/+$/g, '') || '') : '';
             const cleanAssets = repoConfig.assetsDir?.replace(/^\/+|\/+$/g, '') || '';
             const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
-            const newPath = [fullAssetsPath, filename].filter(Boolean).join('/');
-            const manip = await ImageManipulator.manipulateAsync(pendingImage.uri, [{ resize: { width: 1200 } }], { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG, base64: true });
-            await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, { message: `Upload ${filename}`, content: manip.base64 }, { headers: { Authorization: `token ${token}` } });
-            showToast('Image uploaded', 'success');
+            const newPath = `${fullAssetsPath}/${finalName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
+
+            const resp = await fetch(lastPickedUri);
+            const blob = await resp.blob();
+            const base64: string = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const res = reader.result as string;
+                    resolve(res.split(',')[1]);
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(blob);
+            });
+
+            await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
+                message: `Upload asset ${finalName}`,
+                content: base64
+            }, {
+                headers: { Authorization: `token ${token}` }
+            });
+
+            showToast('Asset uploaded', 'success');
+            fetchAssets(true);
         } catch (e: any) {
             showToast(`Upload failed: ${e.message}`, 'error');
-        } finally { setIsLoading(false); setPendingImage(null); }
-    }, [pendingImage, repoPath, repoConfig?.useStaticFolder, repoConfig?.staticDir, repoConfig?.assetsDir, fetchAssets, showToast]);
+        } finally {
+            setIsLoading(false);
+            setLastPickedUri(null);
+            setPickedFilename('');
+        }
+    }, [lastPickedUri, pickedAssetType, repoPath, repoConfig, fetchAssets, showToast]);
 
     const handleRefreshPosts = useCallback(() => fetchFiles(true), [fetchFiles]);
     const handleRefreshAssets = useCallback(() => fetchAssets(true), [fetchAssets]);
@@ -1304,11 +1428,17 @@ export default function Files() {
                     repoConfig={repoConfig}
                 />
 
+                <AssetTypeDialog
+                    visible={isAssetTypeVisible}
+                    onDismiss={() => setIsAssetTypeVisible(false)}
+                    onSelect={handlePickAsset}
+                />
+
                 <ImageNameDialog
                     visible={isImageNameVisible}
                     onDismiss={() => setIsImageNameVisible(false)}
-                    onConfirm={confirmUpload}
-                    initialValue={''}
+                    onConfirm={confirmAssetUpload}
+                    initialValue={pickedFilename}
                 />
 
                 <RenameDialog
@@ -1316,6 +1446,7 @@ export default function Files() {
                     onDismiss={() => setIsRenameVisible(false)}
                     onRename={mode === 'assets' ? handleRenameAsset : handleRenameFile}
                     initialValue={mode === 'assets' ? (selectedAsset?.name?.split('.')[0] || '') : (selectedFile?.name?.replace('.md', '') || '')}
+                    title={mode === 'assets' ? 'Rename Asset' : (selectedFile?._isDir ? 'Rename Directory' : 'Rename Post')}
                 />
 
                 <RenameDialog
@@ -1367,8 +1498,8 @@ export default function Files() {
             </Portal>
 
             <FAB
-                icon={mode === 'assets' ? 'upload' : 'plus'}
-                label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Image'}
+                icon={mode === 'posts' ? 'file-document-outline' : mode === 'drafts' ? 'pencil-box-outline' : 'file-plus-outline'}
+                label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Asset'}
                 style={[styles.fab, !repoConfig?.siteUrl && { right: 16 }]}
                 onPress={handleAction}
             />
@@ -1469,6 +1600,12 @@ const styles = StyleSheet.create({
     },
     assetThumbContainer: { position: 'relative' },
     assetImage: { width: '100%' },
+    assetIconPlaceholder: {
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
     assetOverlay: {
         position: 'absolute',
         top: 0,

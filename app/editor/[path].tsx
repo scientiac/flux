@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
 import * as Clipboard from 'expo-clipboard';
+import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -51,7 +52,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue }: { visi
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss}>
-            <Dialog.Title>Name your image</Dialog.Title>
+            <Dialog.Title>Upload Asset</Dialog.Title>
             <Dialog.Content>
                 <TextInput
                     label="Filename"
@@ -135,6 +136,26 @@ const LinkMentionDialog = ({ visible, onDismiss, onConfirm }: { visible: boolean
             <Dialog.Actions>
                 <Button onPress={onDismiss}>Cancel</Button>
                 <Button mode="contained" onPress={() => onConfirm(url, text, type)} disabled={!url} style={{ borderRadius: 20 }}>Insert</Button>
+            </Dialog.Actions>
+        </Dialog>
+    );
+};
+
+// Sub-component for Asset Type Selection
+const AssetTypeDialog = ({ visible, onDismiss, onSelect }: { visible: boolean, onDismiss: () => void, onSelect: (type: 'image' | 'video' | 'file') => void }) => {
+    return (
+        <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
+            <Dialog.Title>Upload Asset</Dialog.Title>
+            <Dialog.Content>
+                <PaperText variant="bodyMedium" style={{ marginBottom: 16 }}>Choose the type of asset you want to upload:</PaperText>
+                <View style={{ gap: 8 }}>
+                    <Button mode="outlined" icon="image" onPress={() => onSelect('image')} style={{ borderRadius: 12 }}>Image</Button>
+                    <Button mode="outlined" icon="video" onPress={() => onSelect('video')} style={{ borderRadius: 12 }}>Video</Button>
+                    <Button mode="outlined" icon="file" onPress={() => onSelect('file')} style={{ borderRadius: 12 }}>Other</Button>
+                </View>
+            </Dialog.Content>
+            <Dialog.Actions>
+                <Button onPress={onDismiss}>Cancel</Button>
             </Dialog.Actions>
         </Dialog>
     );
@@ -265,24 +286,60 @@ const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
 });
 
 // Sub-component for Asset Item
-const AssetItem = memo(({ item, headers, onInsert, onRename, onDelete }: { item: any, headers: any, onInsert: (filename: string) => void, onRename: () => void, onDelete: () => void }) => {
+const getAssetIcon = (filename: string) => {
+    const ext = filename.split('.').pop()?.toLowerCase();
+    switch (ext) {
+        // Video
+        case 'mp4': case 'm4v': case 'mov': case 'avi': case 'wmv': case 'flv': case 'mkv': case 'webm':
+            return 'movie-open';
+        // Audio
+        case 'mp3': case 'wav': case 'ogg': case 'm4a': case 'aac': case 'flac':
+            return 'music';
+        // Documents
+        case 'pdf':
+            return 'file-pdf-box';
+        case 'doc': case 'docx':
+            return 'file-word';
+        case 'xls': case 'xlsx':
+            return 'file-excel';
+        case 'ppt': case 'pptx':
+            return 'file-powerpoint';
+        case 'txt': case 'md':
+            return 'file-document';
+        case 'zip': case 'rar': case '7z': case 'tar': case 'gz':
+            return 'zip-box';
+        default:
+            return 'file-question';
+    }
+};
+
+const AssetItem = memo(({ item, headers, onInsert, onRename, onDelete }: { item: any, headers: any, onInsert: () => void, onRename: () => void, onDelete: () => void }) => {
     const theme = useTheme();
     const [aspectRatio, setAspectRatio] = useState<number>(1); // Default to square until loaded
 
+    const isImage = item.name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+    const icon = getAssetIcon(item.name);
+
     return (
         <View style={[styles.assetCard, { backgroundColor: theme.colors.surfaceVariant, opacity: item.isPending ? 0.6 : 1 }]}>
-            <TouchableOpacity onPress={() => onInsert(item.name)} style={styles.assetThumbContainer}>
-                <Image
-                    source={{ uri: item.download_url, headers }}
-                    style={[styles.assetImage, { aspectRatio }]}
-                    contentFit="cover"
-                    cachePolicy="disk"
-                    onLoad={(e) => {
-                        if (e.source.width && e.source.height) {
-                            setAspectRatio(e.source.width / e.source.height);
-                        }
-                    }}
-                />
+            <TouchableOpacity onPress={onInsert} style={styles.assetThumbContainer}>
+                {isImage ? (
+                    <Image
+                        source={{ uri: item.download_url, headers }}
+                        style={[styles.assetImage, { aspectRatio }]}
+                        contentFit="cover"
+                        cachePolicy="disk"
+                        onLoad={(e) => {
+                            if (e.source.width && e.source.height) {
+                                setAspectRatio(e.source.width / e.source.height);
+                            }
+                        }}
+                    />
+                ) : (
+                    <View style={[styles.assetIconPlaceholder, { aspectRatio: 1, backgroundColor: theme.colors.surfaceVariant }]}>
+                        <MaterialCommunityIcons name={icon as any} size={48} color={theme.colors.onSurfaceVariant} />
+                    </View>
+                )}
                 <View style={styles.assetOverlay}>
                     <IconButton
                         icon="cursor-text"
@@ -308,7 +365,7 @@ const AssetItem = memo(({ item, headers, onInsert, onRename, onDelete }: { item:
 });
 
 // Sub-component for Assets Manager
-const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath: string | null, staticDir: string, assetsDir: string, onInsert: (filename: string) => void }) => {
+const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath: string | null, staticDir: string, assetsDir: string, onInsert: (item: any) => void }) => {
     const { config, assetCache, setRepoAssetCache, showToast } = useAppContext();
     const [isLoading, setIsLoading] = useState(false);
     const [githubToken, setGithubToken] = useState<string | null>(null);
@@ -346,10 +403,8 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
                 throw new Error('Path is not a directory');
             }
 
-            const imageFiles = response.data.filter((f: any) =>
-                f.type === 'file' && f.name.match(/\.(jpg|jpeg|png|gif|webp)$/i)
-            );
-            await setRepoAssetCache(repoPath, imageFiles);
+            const allFiles = response.data.filter((f: any) => f.type === 'file');
+            await setRepoAssetCache(repoPath, allFiles);
         } catch (e: any) {
             console.error('[Assets] Fetch failed', e.message);
             setFetchError(e.response?.status === 404 ? 'Directory not found' : (e.message || 'Fetch failed'));
@@ -446,7 +501,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
         return (
             <View style={styles.center}>
                 <PaperText style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}>
-                    {fetchError || `No images found in ${[staticDir, assetsDir].filter(Boolean).join('/') || 'root'}`}
+                    {fetchError || `No assets found in ${[staticDir, assetsDir].filter(Boolean).join('/') || 'root'}`}
                 </PaperText>
                 <Button mode="text" onPress={() => fetchAssets()} icon="refresh">Refresh</Button>
             </View>
@@ -479,7 +534,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
                                         key={item.path}
                                         item={item}
                                         headers={headers}
-                                        onInsert={onInsert}
+                                        onInsert={() => onInsert(item)}
                                         onRename={() => { setSelectedAsset(item); setRenameVisible(true); }}
                                         onDelete={() => { setSelectedAsset(item); setDeleteConfirmVisible(true); }}
                                     />
@@ -491,7 +546,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
                                         key={item.path}
                                         item={item}
                                         headers={headers}
-                                        onInsert={onInsert}
+                                        onInsert={() => onInsert(item)}
                                         onRename={() => { setSelectedAsset(item); setRenameVisible(true); }}
                                         onDelete={() => { setSelectedAsset(item); setDeleteConfirmVisible(true); }}
                                     />
@@ -505,7 +560,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
                         <ListingSkeleton isGrid />
                     ) : (
                         <View style={styles.emptyState}>
-                            <PaperText style={{ opacity: 0.5 }}>No images found</PaperText>
+                            <PaperText style={{ opacity: 0.5 }}>No assets found</PaperText>
                         </View>
                     )
                 }
@@ -576,6 +631,8 @@ export default function Editor() {
     // const [pendingAssets, setPendingAssets] = useState<{ [filename: string]: string }>({}); // Removed pending, we upload immediately
     const [lastPickedUri, setLastPickedUri] = useState<string | null>(null);
     const [pickedFilename, setPickedFilename] = useState('');
+    const [pickedAssetType, setPickedAssetType] = useState<'image' | 'video' | 'file'>('image');
+    const [isAssetTypeVisible, setIsAssetTypeVisible] = useState(false);
     const [isImageNameVisible, setIsImageNameVisible] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
 
@@ -994,24 +1051,48 @@ export default function Editor() {
         }
     };
 
-    const pickImage = async () => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            quality: 0.8,
-        });
+    const handlePickAsset = async (type: 'image' | 'video' | 'file') => {
+        setIsAssetTypeVisible(false);
+        setPickedAssetType(type);
+        try {
+            if (type === 'image' || type === 'video') {
+                const result = await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: type === 'image' ? ['images'] : ['videos'],
+                    allowsEditing: type === 'image',
+                    quality: 0.8,
+                });
 
-        if (!result.canceled && result.assets && result.assets.length > 0) {
-            const asset = result.assets[0];
-            const resized = await ImageManipulator.manipulateAsync(
-                asset.uri,
-                [{ resize: { width: 1200 } }],
-                { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
-            );
-            setLastPickedUri(resized.uri);
-            // Start with blank filename so user can type directly
-            setPickedFilename('');
-            setIsImageNameVisible(true);
+                if (!result.canceled && result.assets && result.assets.length > 0) {
+                    const asset = result.assets[0];
+                    let uri = asset.uri;
+                    if (type === 'image') {
+                        const resized = await ImageManipulator.manipulateAsync(
+                            asset.uri,
+                            [{ resize: { width: 1200 } }],
+                            { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG }
+                        );
+                        uri = resized.uri;
+                    }
+                    setLastPickedUri(uri);
+                    setPickedFilename(asset.fileName || '');
+                    setIsImageNameVisible(true);
+                }
+            } else {
+                const result = await DocumentPicker.getDocumentAsync({
+                    type: '*/*',
+                    copyToCacheDirectory: true,
+                });
+
+                if (!result.canceled && result.assets && result.assets.length > 0) {
+                    const asset = result.assets[0];
+                    setLastPickedUri(asset.uri);
+                    setPickedFilename(asset.name);
+                    setIsImageNameVisible(true);
+                }
+            }
+        } catch (e) {
+            console.error('Pick failed', e);
+            showToast('Failed to pick file', 'error');
         }
     };
 
@@ -1031,19 +1112,22 @@ export default function Editor() {
         showToast('Link inserted', 'success');
     };
 
-    const confirmImage = async (name: string) => {
+    const confirmAsset = async (name: string) => {
         if (!lastPickedUri || !name || !repoConfig || !repoPath) return;
 
-        setIsImageNameVisible(false); // Close dialog first
+        setIsImageNameVisible(false);
         setIsUploading(true);
-        // showToast('Uploading image...', 'info'); // Maybe too noisy? The button has loading state.
 
-        const finalName = name.includes('.') ? name : `${name}.jpg`;
+        const ext = name.split('.').pop()?.toLowerCase();
+        const finalName = name.includes('.') ? name : `${name}.${ext || (pickedAssetType === 'image' ? 'jpg' : 'bin')}`;
         const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
         const staticPath = repoConfig.useStaticFolder !== false ? repoConfig.staticDir.replace(/^\/+|\/+$/g, '') : '';
 
         const relativePath = `/${[assetsPath, finalName].filter(Boolean).join('/')}`;
         const assetPath = [staticPath, assetsPath, finalName].filter(Boolean).join('/');
+
+        const isImg = finalName.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        const markdown = isImg ? `![${finalName}](${relativePath})` : `[${finalName}](${relativePath})`;
 
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
@@ -1108,11 +1192,10 @@ export default function Editor() {
             // const { config, localDrafts, saveDraft, deleteDraft } = useAppContext(); -> Need to destructure assetCache there.
 
             // Insert Markdown
-            const newContent = content.substring(0, selection.start) + `![${finalName}](${relativePath})` + content.substring(selection.end);
+            const newContent = content.substring(0, selection.start) + markdown + content.substring(selection.end);
             setContent(newContent);
-            showToast('Image uploaded and inserted', 'success');
+            showToast('Asset uploaded and inserted', 'success');
             setLastPickedUri(null);
-
         } catch (e: any) {
             console.error('Upload failed', e);
             showToast(`Upload failed: ${e.message}`, 'error');
@@ -1121,11 +1204,14 @@ export default function Editor() {
         }
     };
 
-    const handleInsertAsset = (filename: string) => {
+    const handleInsertAsset = (item: any) => {
         if (!repoConfig) return;
+        const filename = item.name;
         const assetsPath = repoConfig.assetsDir.replace(/^\/+|\/+$/g, '');
         const relativePath = `/${[assetsPath, filename].filter(Boolean).join('/')}`;
-        const newContent = content.substring(0, selection.start) + `![${filename}](${relativePath})` + content.substring(selection.end);
+        const isImg = filename.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        const markdown = isImg ? `![${filename}](${relativePath})` : `[${filename}](${relativePath})`;
+        const newContent = content.substring(0, selection.start) + markdown + content.substring(selection.end);
         setContent(newContent);
         setMode('edit');
     };
@@ -1273,11 +1359,11 @@ export default function Editor() {
                                 onPress={() => setIsLinkModalVisible(true)}
                             />
                             <IconButton
-                                icon="image-plus"
+                                icon="file-plus-outline"
                                 mode="contained"
                                 size={28}
                                 style={styles.fabItem}
-                                onPress={pickImage}
+                                onPress={() => setIsAssetTypeVisible(true)}
                             />
                         </View>
                     </View>
@@ -1304,6 +1390,12 @@ export default function Editor() {
             </View>
 
             <Portal>
+                <AssetTypeDialog
+                    visible={isAssetTypeVisible}
+                    onDismiss={() => setIsAssetTypeVisible(false)}
+                    onSelect={handlePickAsset}
+                />
+
                 <LinkMentionDialog
                     visible={isLinkModalVisible}
                     onDismiss={() => setIsLinkModalVisible(false)}
@@ -1313,7 +1405,7 @@ export default function Editor() {
                 <ImageNameDialog
                     visible={isImageNameVisible}
                     onDismiss={() => setIsImageNameVisible(false)}
-                    onConfirm={confirmImage}
+                    onConfirm={confirmAsset}
                     initialValue={pickedFilename}
                 />
 
@@ -1359,6 +1451,12 @@ const styles = StyleSheet.create({
     },
     assetThumbContainer: { position: 'relative' },
     assetImage: { width: '100%' },
+    assetIconPlaceholder: {
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
     assetOverlay: {
         position: 'absolute',
         top: 0,
