@@ -1,10 +1,11 @@
 import axios from 'axios';
+import { Buffer } from 'buffer';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { BackHandler, ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Button, Dialog, HelperText, Portal, Switch, Text, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, HelperText, IconButton, Portal, Surface, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 
 export default function Config() {
@@ -23,22 +24,11 @@ export default function Config() {
     const [postTemplate, setPostTemplate] = useState(currentRepoConfig?.postTemplate || "+++\ntitle: {{title}}\ndate: {{date}}\ntime: {{time}}\n+++\n\n");
     const [siteUrl, setSiteUrl] = useState(currentRepoConfig?.siteUrl || '');
     const [showAdvancedFiles, setShowAdvancedFiles] = useState(currentRepoConfig?.showAdvancedFiles ?? false);
+    const [syncSettingsToGitHub, setSyncSettingsToGitHub] = useState(currentRepoConfig?.syncSettingsToGitHub ?? true);
     const [isValidating, setIsValidating] = useState(false);
 
     // Remove confirmation dialog
     const [removeDialogVisible, setRemoveDialogVisible] = useState(false);
-
-    useEffect(() => {
-        if (currentRepoConfig) {
-            setContentDir(currentRepoConfig.contentDir);
-            setUseStaticFolder(currentRepoConfig.useStaticFolder ?? true);
-            if (currentRepoConfig.staticDir !== undefined) setStaticDir(currentRepoConfig.staticDir);
-            setAssetsDir(currentRepoConfig.assetsDir);
-            if (currentRepoConfig.postTemplate) setPostTemplate(currentRepoConfig.postTemplate);
-            setSiteUrl(currentRepoConfig.siteUrl || '');
-            setShowAdvancedFiles(currentRepoConfig.showAdvancedFiles ?? false);
-        }
-    }, [currentRepoConfig]);
 
     const validateAndSave = useCallback(async () => {
         if (!repoPath) return;
@@ -81,15 +71,45 @@ export default function Config() {
                 }
             }
 
-            updateRepoConfig(repoPath, {
+            const updatedRepoConfig = {
                 contentDir: cleanContentDir,
                 useStaticFolder,
                 staticDir: cleanStaticDir,
                 assetsDir: cleanAssetsDir,
                 postTemplate: postTemplate,
                 siteUrl: siteUrl.trim(),
-                showAdvancedFiles
-            });
+                showAdvancedFiles,
+                syncSettingsToGitHub
+            };
+
+            // 2. Sync flux.json to GitHub root
+            if (syncSettingsToGitHub) {
+                try {
+                    let sha = undefined;
+                    try {
+                        const check = await axios.get(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
+                            headers: { Authorization: `token ${token}` }
+                        });
+                        sha = check.data.sha;
+                    } catch (e: any) {
+                        if (e.response?.status !== 404) throw e;
+                    }
+
+                    await axios.put(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
+                        message: 'Update Flux site settings',
+                        content: Buffer.from(JSON.stringify(updatedRepoConfig, null, 2)).toString('base64'),
+                        sha
+                    }, {
+                        headers: { Authorization: `token ${token}` }
+                    });
+                } catch (e: any) {
+                    console.error('[Config] flux.json sync failed', e.message);
+                    // We show a warning but don't block the local save
+                    showToast('Settings saved locally, but GitHub sync failed', 'info');
+                }
+            }
+
+            updateRepoConfig(repoPath, updatedRepoConfig);
             showToast('Settings saved successfully', 'success');
             setTimeout(() => {
                 if (from === 'dashboard') router.back();
@@ -100,7 +120,7 @@ export default function Config() {
         } finally {
             setIsValidating(false);
         }
-    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, showAdvancedFiles, updateRepoConfig, from, router]);
+    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, showAdvancedFiles, syncSettingsToGitHub, updateRepoConfig, from, router]);
 
     const handleBack = useCallback(() => {
         if (!currentRepoConfig) {
@@ -120,6 +140,26 @@ export default function Config() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         if (!repoPath) return;
         setRemoveDialogVisible(false);
+
+        // Try to delete flux.json from GitHub if sync was enabled
+        if (syncSettingsToGitHub) {
+            try {
+                const token = await SecureStore.getItemAsync('github_access_token');
+                const check = await axios.get(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
+                    headers: { Authorization: `token ${token}` }
+                });
+                await axios.delete(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
+                    headers: { Authorization: `token ${token}` },
+                    data: {
+                        message: 'Remove Flux site settings',
+                        sha: check.data.sha
+                    }
+                });
+            } catch (e: any) {
+                console.log('[Config] flux.json deletion failed or already missing', e.message);
+            }
+        }
+
         await removeRepoConfig(repoPath);
         showToast('Site removed from Flux', 'success');
         setTimeout(() => router.replace('/'), 800);
@@ -155,9 +195,29 @@ export default function Config() {
             </Appbar.Header>
 
             <ScrollView contentContainerStyle={styles.content}>
-                <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.outline }]}>
-                    Settings for <Text style={{ fontWeight: 'bold', color: theme.colors.onBackground }}>{repoPath}</Text>
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: 8 }}>
+                    <Text variant="bodyMedium" style={[styles.subtitle, { color: theme.colors.outline, marginBottom: 0 }]}>
+                        Settings for <Text style={{ fontWeight: 'bold', color: theme.colors.onBackground }}>{repoPath}</Text>
+                    </Text>
+                    {syncSettingsToGitHub && (
+                        <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, backgroundColor: theme.colors.primaryContainer, flexDirection: 'row', alignItems: 'center' }}>
+                            <IconButton icon="sync" size={14} iconColor={theme.colors.onPrimaryContainer} style={{ margin: 0 }} />
+                            <Text variant="labelSmall" style={{ color: theme.colors.onPrimaryContainer, fontWeight: 'bold' }}>GitHub Sync Active</Text>
+                        </View>
+                    )}
+                </View>
+
+                <Surface elevation={1} style={{ padding: 16, borderRadius: 20, backgroundColor: theme.colors.surfaceVariant, marginBottom: 24 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <View style={{ flex: 1, paddingRight: 16 }}>
+                            <Text variant="titleMedium" style={{ color: theme.colors.primary, fontWeight: '700' }}>Cloud Settings Sync</Text>
+                            <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 4 }}>
+                                Automatically save and load site settings from a <Text style={{ fontStyle: 'italic' }}>flux.json</Text> file in your GitHub repository root. Disabling this will keep settings local to this device.
+                            </Text>
+                        </View>
+                        <Switch value={syncSettingsToGitHub} onValueChange={setSyncSettingsToGitHub} />
+                    </View>
+                </Surface>
 
                 <View style={styles.inputGroup}>
                     <TextInput

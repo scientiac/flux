@@ -10,6 +10,7 @@ interface RepoConfig {
     postTemplate: string;
     siteUrl?: string;
     showAdvancedFiles?: boolean;
+    syncSettingsToGitHub?: boolean;
 }
 
 interface AppConfig {
@@ -61,7 +62,8 @@ const DEFAULT_REPO_CONFIG: RepoConfig = {
     useStaticFolder: true,
     staticDir: 'static',
     assetsDir: 'assets',
-    postTemplate: "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n"
+    postTemplate: "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n",
+    syncSettingsToGitHub: true
 };
 
 const DEFAULT_CONFIG: AppConfig = {

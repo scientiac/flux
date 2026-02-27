@@ -14,7 +14,7 @@ const GITHUB_CLIENT_SECRET = 'a03efac4eac7ca537543b68343a8bee65b6cb10b';
 export default function Index() {
     const theme = useTheme();
     const router = useRouter();
-    const { config, updateConfig, isConfigLoading, hasAutoRedirected, setHasAutoRedirected, cachedRepos, setCachedRepos } = useAppContext();
+    const { config, updateConfig, updateRepoConfig, isConfigLoading, hasAutoRedirected, setHasAutoRedirected, cachedRepos, setCachedRepos, showToast } = useAppContext();
     const { token, isLoading: isAuthLoading, error, login, logout } = useGitHubAuth(GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET);
 
     const [repos, setRepos] = useState<any[]>(cachedRepos || []);
@@ -113,9 +113,27 @@ export default function Index() {
         if (isAlreadyConfigured) {
             router.push('/files');
         } else {
+            // Check for flux.json in the repo root
+            try {
+                const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
+                    headers: { Authorization: `token ${token}` }
+                });
+
+                if (response.data && response.data.content) {
+                    const content = Buffer.from(response.data.content, 'base64').toString('utf8');
+                    const repoConfig = JSON.parse(content);
+                    await updateRepoConfig(repoPath, repoConfig);
+                    showToast('Settings synced from GitHub', 'success');
+                    router.push('/files');
+                    return;
+                }
+            } catch (e: any) {
+                // Not found or access error, proceed to manual config
+                console.log('[Index] flux.json not found or error', e.message);
+            }
             router.push('/config');
         }
-    }, [config.repoConfigs, updateConfig, router]);
+    }, [config.repoConfigs, updateConfig, updateRepoConfig, router, token, showToast]);
 
     const handleRefresh = useCallback(() => fetchRepos(true), [fetchRepos]);
 
