@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { Buffer } from 'buffer';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import * as ExpoSplashScreen from 'expo-splash-screen';
