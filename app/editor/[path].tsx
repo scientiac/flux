@@ -66,7 +66,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, extensio
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss}>
-            <Dialog.Title>Upload Asset</Dialog.Title>
+            <Dialog.Title>New Asset</Dialog.Title>
             <Dialog.Content>
                 <TextInput
                     label="Filename"
@@ -165,7 +165,7 @@ const LinkMentionDialog = ({ visible, onDismiss, onConfirm }: { visible: boolean
 const AssetTypeDialog = ({ visible, onDismiss, onSelect }: { visible: boolean, onDismiss: () => void, onSelect: (type: 'image' | 'video' | 'file') => void }) => {
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
-            <Dialog.Title>Upload Asset</Dialog.Title>
+            <Dialog.Title>New Asset</Dialog.Title>
             <Dialog.Content>
                 <PaperText variant="bodyMedium" style={{ marginBottom: 16 }}>Choose the type of asset you want to upload:</PaperText>
                 <View style={{ gap: 8 }}>

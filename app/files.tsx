@@ -82,7 +82,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, extensio
 
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
-            <Dialog.Title>Upload Asset</Dialog.Title>
+            <Dialog.Title>New Asset</Dialog.Title>
             <Dialog.Content>
                 <TextInput
                     label="Filename"
@@ -302,7 +302,7 @@ const getAssetIcon = (filename: string) => {
 const AssetTypeDialog = ({ visible, onDismiss, onSelect }: { visible: boolean, onDismiss: () => void, onSelect: (type: 'image' | 'video' | 'file') => void }) => {
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
-            <Dialog.Title>Upload Asset</Dialog.Title>
+            <Dialog.Title>New Asset</Dialog.Title>
             <Dialog.Content>
                 <Text variant="bodyMedium" style={{ marginBottom: 16 }}>Choose the type of asset you want to upload:</Text>
                 <View style={{ gap: 8 }}>
@@ -1544,24 +1544,50 @@ export default function Files() {
                 />
 
                 <Dialog visible={isDeleteVisible} onDismiss={() => setIsDeleteVisible(false)} style={{ borderRadius: 28 }}>
-                    <Dialog.Title>Delete {mode === 'assets' ? 'Asset' : selectedFile?._isDir ? 'Directory' : 'Post'}</Dialog.Title>
+                    <Dialog.Icon icon="alert-circle-outline" color={theme.colors.error} />
+                    <Dialog.Title style={{ textAlign: 'center' }}>
+                        {mode === 'assets' ? 'Delete Asset?' : selectedFile?._isDir ? 'Delete Directory?' : 'Delete Post?'}
+                    </Dialog.Title>
                     <Dialog.Content>
-                        <Text>Are you sure you want to delete <Text style={{ fontWeight: 'bold' }}>{mode === 'assets' ? selectedAsset?.name : selectedFile?.name}</Text>?</Text>
+                        <Text style={{ textAlign: 'center' }}>
+                            Are you sure you want to delete <Text style={{ fontWeight: 'bold' }}>{mode === 'assets' ? selectedAsset?.name : selectedFile?.name}</Text>?
+                            {selectedFile?._isDir ? '\n\nWARNING: This will recursively delete ALL files inside. This action cannot be undone.' : ' This action cannot be undone.'}
+                        </Text>
                         {selectedFile?._isDir && (
-                            <Text variant="bodySmall" style={{ marginTop: 12, color: theme.colors.error, fontWeight: 'bold' }}>
-                                WARNING: This will recursively delete ALL files inside this directory.
+                            <Text variant="bodySmall" style={{ textAlign: 'center', marginTop: 16, color: theme.colors.error, fontWeight: 'bold', opacity: 0.8 }}>
+                                Long-press "Delete" to confirm recursive deletion
                             </Text>
                         )}
                     </Dialog.Content>
                     <Dialog.Actions>
                         <Button onPress={() => setIsDeleteVisible(false)}>Cancel</Button>
-                        <Button onPress={mode === 'assets' ? handleDeleteAsset : handleDeleteFile} textColor={theme.colors.error}>Delete</Button>
+                        <View>
+                            <Button
+                                onPress={() => {
+                                    if (selectedFile?._isDir) {
+                                        showToast('Long-press to confirm folder deletion', 'info');
+                                    } else {
+                                        if (mode === 'assets') handleDeleteAsset();
+                                        else handleDeleteFile();
+                                    }
+                                }}
+                                onLongPress={() => {
+                                    if (selectedFile?._isDir) {
+                                        handleDeleteFile();
+                                    }
+                                }}
+                                textColor={theme.colors.error}
+                            >
+                                Delete
+                            </Button>
+                        </View>
                     </Dialog.Actions>
                 </Dialog>
                 <Dialog visible={isDeleteDraftVisible} onDismiss={() => setIsDeleteDraftVisible(false)} style={{ borderRadius: 28 }}>
-                    <Dialog.Title>Delete Draft</Dialog.Title>
+                    <Dialog.Icon icon="alert-circle-outline" color={theme.colors.error} />
+                    <Dialog.Title style={{ textAlign: 'center' }}>Delete Draft?</Dialog.Title>
                     <Dialog.Content>
-                        <Text>Are you sure you want to delete '{selectedDraft?.title}'?</Text>
+                        <Text style={{ textAlign: 'center' }}>Are you sure you want to delete draft <Text style={{ fontWeight: 'bold' }}>{selectedDraft?.title}</Text>? This action cannot be undone.</Text>
                     </Dialog.Content>
                     <Dialog.Actions>
                         <Button onPress={() => setIsDeleteDraftVisible(false)}>Cancel</Button>
@@ -1590,7 +1616,7 @@ export default function Files() {
             <View style={styles.fabContainer}>
                 <FAB
                     icon={mode === 'posts' ? 'file-document-outline' : mode === 'drafts' ? 'pencil-box-outline' : 'file-plus-outline'}
-                    label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Asset'}
+                    label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'New Asset'}
                     style={styles.fabContent}
                     onPress={handleAction}
                 />

@@ -118,7 +118,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, extensio
     useEffect(() => { if (visible) setLocalValue(initialValue); }, [visible, initialValue]);
     return (
         <Dialog visible={visible} onDismiss={onDismiss} style={{ borderRadius: 28 }}>
-            <Dialog.Title>Upload Asset</Dialog.Title>
+            <Dialog.Title>New Asset</Dialog.Title>
             <Dialog.Content>
                 <TextInput label="Filename" value={localValue} onChangeText={setLocalValue} mode="flat" autoFocus style={{ backgroundColor: theme.colors.surfaceVariant }} right={extension ? <TextInput.Affix text={'.' + extension} /> : null} />
                 {size ? (
