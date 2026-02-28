@@ -513,13 +513,10 @@ export default function AdvancedFiles() {
                 if (item.type === 'dir') {
                     setCurrentPath(item.path);
                 } else {
-                    // Restrict editing to .md files only
-                    if (item.name.toLowerCase().endsWith('.md')) {
-                        if (isConfigured) {
-                            router.push(`/editor/${encodeURIComponent(item.path)}?repo=${encodeURIComponent(repoPath || '')}`);
-                        } else {
-                            showToast('Setup this repo as a site to enable editing', 'info');
-                        }
+                    if (!isConfigured) {
+                        showToast('Editing disabled for unconfigured repo', 'info');
+                    } else if (item.name.toLowerCase().endsWith('.md')) {
+                        router.push(`/editor/${encodeURIComponent(item.path)}?repo=${encodeURIComponent(repoPath || '')}`);
                     } else {
                         showToast('Only .md files can be edited', 'info');
                     }
