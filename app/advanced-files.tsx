@@ -152,10 +152,10 @@ const FileItem = memo(({ item, onRename, onDelete, onCopy, onMove, onPress }: { 
                             <Text variant="titleMedium" numberOfLines={1} style={{ flex: 1, fontWeight: isDir ? '700' : '400' }}>{item.name}</Text>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 4 }}>
-                            <IconButton mode="contained-tonal" icon="content-copy" size={18} iconColor={theme.colors.secondary} onPress={onCopy} />
-                            <IconButton mode="contained-tonal" icon="file-move-outline" size={18} iconColor={theme.colors.secondary} onPress={onMove} />
-                            <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
-                            <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
+                            <IconButton mode="contained-tonal" icon="content-copy" size={18} iconColor={theme.colors.secondary} containerColor={isDir ? theme.colors.surface : undefined} onPress={onCopy} />
+                            <IconButton mode="contained-tonal" icon="file-move-outline" size={18} iconColor={theme.colors.secondary} containerColor={isDir ? theme.colors.surface : undefined} onPress={onMove} />
+                            <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} containerColor={isDir ? theme.colors.surface : undefined} onPress={onRename} />
+                            <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} containerColor={isDir ? theme.colors.surface : undefined} onPress={onDelete} />
                         </View>
                     </View>
                 </View>
@@ -683,7 +683,7 @@ const styles = StyleSheet.create({
     itemCard: { paddingVertical: 12, paddingHorizontal: 16 },
     itemHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     fabContainer: { position: 'absolute', right: 16, bottom: 16, gap: 12, alignItems: 'center' },
-    fab: { borderRadius: 16 },
+    fab: {},
     searchContainer: {
         paddingHorizontal: 16,
         paddingTop: 8,

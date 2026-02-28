@@ -1532,28 +1532,29 @@ export default function Files() {
                 />
             </Portal>
 
-            <FAB
-                icon={mode === 'posts' ? 'file-document-outline' : mode === 'drafts' ? 'pencil-box-outline' : 'file-plus-outline'}
-                label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Asset'}
-                style={styles.fab}
-                onPress={handleAction}
-            />
-
-            <FAB
-                icon="web"
-                style={styles.fabSecondary}
-                onPress={() => {
-                    if (repoConfig?.siteUrl) {
-                        Linking.openURL(repoConfig.siteUrl);
-                    } else {
+            <View style={styles.fabContainer}>
+                <FAB
+                    icon={mode === 'posts' ? 'file-document-outline' : mode === 'drafts' ? 'pencil-box-outline' : 'file-plus-outline'}
+                    label={mode === 'posts' ? 'New Post' : mode === 'drafts' ? 'New Draft' : 'Upload Asset'}
+                    style={styles.fabContent}
+                    onPress={handleAction}
+                />
+                <FAB
+                    icon="web"
+                    style={styles.fabContent}
+                    onPress={() => {
+                        if (repoConfig?.siteUrl) {
+                            Linking.openURL(repoConfig.siteUrl);
+                        } else {
+                            Linking.openURL(`https://github.com/${repoPath}`);
+                        }
+                    }}
+                    onLongPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                         Linking.openURL(`https://github.com/${repoPath}`);
-                    }
-                }}
-                onLongPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    Linking.openURL(`https://github.com/${repoPath}`);
-                }}
-            />
+                    }}
+                />
+            </View>
         </View >
     );
 }
@@ -1597,22 +1598,15 @@ const styles = StyleSheet.create({
     listItemTitle: { fontSize: 17, fontWeight: '600' },
     listItemSubtitle: { fontSize: 13, opacity: 0.6, marginTop: 2 },
     emptyState: { flex: 1, padding: 64, alignItems: 'center', justifyContent: 'center' },
-    fab: {
+    fabContainer: {
         position: 'absolute',
-        margin: 16,
-        right: 96,
-        bottom: 16,
-        borderRadius: 16,
-        paddingHorizontal: 8,
-        elevation: 4,
-    },
-    fabSecondary: {
-        position: 'absolute',
-        margin: 16,
         right: 16,
         bottom: 16,
-        borderRadius: 16,
-        paddingHorizontal: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    fabContent: {
         elevation: 4,
     },
     tabContainer: {
