@@ -284,6 +284,43 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
     );
 });
 
+const FullEditorSkeleton = memo(() => {
+    const theme = useTheme();
+    const opacity = useSharedValue(0.1);
+
+    useEffect(() => {
+        opacity.value = withRepeat(
+            withSequence(
+                withTiming(0.25, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0.1, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+            ),
+            -1,
+            true
+        );
+    }, [opacity]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        opacity: opacity.value,
+    }));
+
+    return (
+        <View style={{ flex: 1, padding: 24, backgroundColor: theme.colors.background }}>
+            <Animated.View style={[animatedStyle, { height: 32, width: '60%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 8, marginBottom: 24 }]} />
+            <View style={{ gap: 12 }}>
+                <Animated.View style={[animatedStyle, { height: 16, width: '100%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                <Animated.View style={[animatedStyle, { height: 16, width: '90%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                <Animated.View style={[animatedStyle, { height: 16, width: '95%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                <View style={{ height: 12 }} />
+                <Animated.View style={[animatedStyle, { height: 16, width: '100%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                <Animated.View style={[animatedStyle, { height: 16, width: '85%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                <Animated.View style={[animatedStyle, { height: 16, width: '98%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                <View style={{ height: 12 }} />
+                <Animated.View style={[animatedStyle, { height: 16, width: '40%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+            </View>
+        </View>
+    );
+});
+
 const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
     const items = Array.from({ length: isGrid ? 12 : 8 });
     if (isGrid) {
@@ -1379,17 +1416,21 @@ export default function Editor() {
                 <SlidingTabContainer selectedIndex={editorSelectedIndex}>
                     <View style={{ flex: 1 }}>
                         <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
-                            <NativeTextInput
-                                ref={inputRef}
-                                style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.background }]}
-                                multiline
-                                value={content}
-                                onChangeText={setContent}
-                                onSelectionChange={e => setSelection(e.nativeEvent.selection)}
-                                placeholder="Write something beautiful..."
-                                textAlignVertical="top"
-                                scrollEnabled={false} // Le t the parent ScrollView handle scrolling
-                            />
+                            {isLoading ? (
+                                <FullEditorSkeleton />
+                            ) : (
+                                <NativeTextInput
+                                    ref={inputRef}
+                                    style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.background }]}
+                                    multiline
+                                    value={content}
+                                    onChangeText={setContent}
+                                    onSelectionChange={e => setSelection(e.nativeEvent.selection)}
+                                    placeholder={!isLoading && content === '' ? "Write something beautiful..." : ""}
+                                    textAlignVertical="top"
+                                    scrollEnabled={false} // Le t the parent ScrollView handle scrolling
+                                />
+                            )}
                         </ScrollView>
                         {/* Floating Action Buttons for adding content in Edit mode */}
                         <View style={styles.fabContainer}>
