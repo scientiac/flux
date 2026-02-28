@@ -100,14 +100,16 @@
        xlink:href="#pattern59"
        preserveAspectRatio="xMidYMid"
        id="pattern60"
-       patternTransform="scale(1)" />
+       patternTransform="scale(1)"
+       x="0"
+       y="0" />
     <pattern
        patternUnits="userSpaceOnUse"
        width="200"
        height="200"
        preserveAspectRatio="xMidYMid"
        id="pattern59"
-       style="fill:#000000"
+       style="fill:#104e18"
        x="0"
        y="0"
        inkscape:stockid="Dirty texture"
@@ -228,6 +230,16 @@
        x2="1024"
        y2="512"
        gradientUnits="userSpaceOnUse" />
+    <linearGradient
+       inkscape:collect="always"
+       xlink:href="#swatch1"
+       id="linearGradient2"
+       gradientUnits="userSpaceOnUse"
+       x1="0"
+       y1="512"
+       x2="1024"
+       y2="512"
+       gradientTransform="translate(1065.4495,3.8433261)" />
   </defs>
   <sodipodi:namedview
      id="namedview1"
@@ -238,9 +250,9 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     inkscape:zoom="0.72558594"
-     inkscape:cx="512"
-     inkscape:cy="510.6218"
+     inkscape:zoom="0.47900009"
+     inkscape:cx="781.83701"
+     inkscape:cy="641.9623"
      inkscape:window-width="1648"
      inkscape:window-height="993"
      inkscape:window-x="0"
@@ -263,6 +275,13 @@
      height="1024"
      x="0"
      y="0" />
+  <rect
+     style="fill:#122615;fill-opacity:1;fill-rule:nonzero;stroke:url(#linearGradient2);stroke-width:0"
+     id="rect1-5"
+     width="1024"
+     height="1024"
+     x="1065.4495"
+     y="3.8433261" />
   <g
      inkscape:groupmode="layer"
      inkscape:label="Image"

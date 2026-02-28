@@ -2,7 +2,7 @@
   "expo": {
     "name": "Flux",
     "slug": "flux",
-    "version": "1.5.10",
+    "version": "1.5.11",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "flux",
@@ -31,7 +31,7 @@
           "resizeMode": "contain",
           "backgroundColor": "#cde1cf",
           "dark": {
-            "backgroundColor": "#0f2d2d",
+            "backgroundColor": "#122615",
             "image": "./assets/images/splash-icon-dark.png"
           }
         }
