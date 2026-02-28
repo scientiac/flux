@@ -376,7 +376,7 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
 });
 
 // Sub-component for Draft Item
-const DraftItem = memo(({ item, onPress, onDelete, onPublish, onRename }: { item: any, onPress: () => void, onDelete: () => void, onPublish: () => void, onRename: () => void }) => {
+const DraftItem = memo(({ item, repoConfig, onPress, onDelete, onPublish, onRename }: { item: any, repoConfig: any, onPress: () => void, onDelete: () => void, onPublish: () => void, onRename: () => void }) => {
     const theme = useTheme();
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
@@ -394,8 +394,8 @@ const DraftItem = memo(({ item, onPress, onDelete, onPublish, onRename }: { item
                                 <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
                             </View>
                         </View>
-                        <Text variant="labelSmall" style={styles.draftDate}>
-                            {formatRelativeDate(item.lastModified)}
+                        <Text variant="labelSmall" style={styles.draftDate} numberOfLines={1}>
+                            {formatRelativeDate(item.lastModified)} for /{(`${repoConfig?.contentDir || ''}/${item.dirPath || ''}`).replace(/\/+/g, '/').replace(/^\/+|\/+$/g, '')}
                         </Text>
                     </View>
                 </View>
@@ -1302,12 +1302,13 @@ export default function Files() {
     const renderDraftItem = useCallback(({ item }: any) => (
         <DraftItem
             item={item}
+            repoConfig={repoConfig}
             onPress={() => router.push(`/editor/draft_${item.id}`)}
             onRename={() => { setSelectedDraft(item); setIsRenameDraftVisible(true); }}
             onPublish={() => { setSelectedDraft(item); setIsPublishDialogVisible(true); }}
             onDelete={() => { setSelectedDraft(item); setIsDeleteDraftVisible(true); }}
         />
-    ), [router]);
+    ), [router, repoConfig]);
 
     const renderAssetItem = useCallback(({ item }: any) => (
         <AssetItem
