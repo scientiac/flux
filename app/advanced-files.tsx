@@ -424,15 +424,18 @@ export default function AdvancedFiles() {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            const fullName = name.toLowerCase().endsWith('.md') ? name : `${name}.md`;
+            const isGitKeep = name.toLowerCase().endsWith('.gitkeep');
+            const fullName = (isGitKeep || name.toLowerCase().endsWith('.md')) ? name : `${name}.md`;
             const path = currentPath ? `${currentPath}/${fullName}` : fullName;
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${path}`, {
                 message: `add!(content): created ${fullName}`,
                 content: Buffer.from('').toString('base64'),
             }, { headers: { Authorization: `token ${token}` } });
-            showToast('File created', 'success');
+            showToast(isGitKeep ? 'Directory created' : 'File created', 'success');
             fetchItems();
-            router.push(`/editor/${encodeURIComponent(path)}?repo=${encodeURIComponent(repoPath)}`);
+            if (!isGitKeep) {
+                router.push(`/editor/${encodeURIComponent(path)}?repo=${encodeURIComponent(repoPath)}`);
+            }
         } catch (e: any) {
             showToast('Creation failed', 'error');
             setItems(previousItems);
