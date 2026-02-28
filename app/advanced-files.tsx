@@ -288,14 +288,14 @@ export default function AdvancedFiles() {
                     const newFilePath = newPath + relativePath;
 
                     await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newFilePath}`, {
-                        message: `Move ${file.path} to ${newFilePath} (Directory Rename)`,
+                        message: `fix!(repo): moved ${file.path} to ${newFilePath}`,
                         content: fileRes.data.content,
                         sha: undefined
                     }, { headers: { Authorization: `token ${token}` } });
 
                     await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${file.path}`, {
                         headers: { Authorization: `token ${token}` },
-                        data: { message: `Delete old file after directory move`, sha: fileRes.data.sha }
+                        data: { message: `fix!(repo): deleted old file after move`, sha: fileRes.data.sha }
                     });
                 }
             } else {
@@ -304,14 +304,14 @@ export default function AdvancedFiles() {
                 });
 
                 await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                    message: `Rename ${selectedItem.name} to ${newName} (Advanced Mode)`,
+                    message: `fix!(repo): renamed ${selectedItem.name} to ${newName}`,
                     content: fileRes.data.content,
                     sha: undefined
                 }, { headers: { Authorization: `token ${token}` } });
 
                 await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${oldPath}`, {
                     headers: { Authorization: `token ${token}` },
-                    data: { message: `Delete old file after rename`, sha: fileRes.data.sha }
+                    data: { message: `fix!(repo): deleted old file after rename`, sha: fileRes.data.sha }
                 });
             }
 
@@ -344,13 +344,13 @@ export default function AdvancedFiles() {
                 for (const file of filesToDelete) {
                     await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${file.path}`, {
                         headers: { Authorization: `token ${token}` },
-                        data: { message: `Delete ${file.path} (Recursive)`, sha: file.sha }
+                        data: { message: `fix!(repo): deleted ${file.path} (recursive)`, sha: file.sha }
                     });
                 }
             } else {
                 await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedItem.path}`, {
                     headers: { Authorization: `token ${token}` },
-                    data: { message: `Delete ${selectedItem.name} (Advanced Mode)`, sha: selectedItem.sha }
+                    data: { message: `fix!(repo): deleted ${selectedItem.name}`, sha: selectedItem.sha }
                 });
             }
             showToast('Deleted successfully', 'success');
@@ -390,14 +390,14 @@ export default function AdvancedFiles() {
                 const newFilePath = (destFolder + relativePath).replace(/^\/+/, '');
 
                 await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newFilePath}`, {
-                    message: `${clipboard.action === 'move' ? 'Move' : 'Copy'} ${item.path} to ${newFilePath}`,
+                    message: `${clipboard.action === 'move' ? 'fix!(repo)' : 'add!(repo)'}: ${clipboard.action === 'move' ? 'moved' : 'copied'} ${item.path} to ${newFilePath}`,
                     content: fileRes.data.content,
                 }, { headers: { Authorization: `token ${token}` } });
 
                 if (clipboard.action === 'move') {
                     await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${item.path}`, {
                         headers: { Authorization: `token ${token}` },
-                        data: { message: `Delete source after move`, sha: item.sha }
+                        data: { message: `fix!(repo): deleted source after move`, sha: item.sha }
                     });
                 }
             }
@@ -427,7 +427,7 @@ export default function AdvancedFiles() {
             const fullName = name.toLowerCase().endsWith('.md') ? name : `${name}.md`;
             const path = currentPath ? `${currentPath}/${fullName}` : fullName;
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${path}`, {
-                message: `Create ${fullName} (Advanced Mode)`,
+                message: `add!(content): created ${fullName}`,
                 content: Buffer.from('').toString('base64'),
             }, { headers: { Authorization: `token ${token}` } });
             showToast('File created', 'success');
@@ -478,7 +478,7 @@ export default function AdvancedFiles() {
                 const base64Content = (reader.result as string).split(',')[1];
                 try {
                     await axios.put(`https://api.github.com/repos/${repoPath}/contents/${path}`, {
-                        message: `Upload ${finalName} (Advanced Mode)`,
+                        message: `add!(assets): uploaded ${finalName}`,
                         content: base64Content,
                     }, { headers: { Authorization: `token ${token}` } });
                     showToast('Uploaded successfully', 'success');

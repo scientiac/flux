@@ -449,7 +449,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
                 headers: { Authorization: `token ${token}` },
                 data: {
-                    message: `Delete asset ${selectedAsset.name}`,
+                    message: `fix!(assets): deleted ${selectedAsset.name}`,
                     sha: selectedAsset.sha
                 }
             });
@@ -484,7 +484,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
                 headers: { Authorization: `token ${token}` }
             });
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                message: `Rename ${oldAsset.name} to ${cleanName}`,
+                message: `fix!(assets): renamed ${oldAsset.name} to ${cleanName}`,
                 content: contentResponse.data.content,
             }, {
                 headers: { Authorization: `token ${token}` }
@@ -492,7 +492,7 @@ const AssetsManager = ({ repoPath, staticDir, assetsDir, onInsert }: { repoPath:
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${oldAsset.path}`, {
                 headers: { Authorization: `token ${token}` },
                 data: {
-                    message: `Cleanup after rename ${oldAsset.name} to ${cleanName}`,
+                    message: `fix!(assets): cleaned up after rename ${oldAsset.name} to ${cleanName}`,
                     sha: oldAsset.sha
                 }
             });
@@ -997,7 +997,7 @@ export default function Editor() {
             }
 
             const payload = {
-                message: msg || (isNew ? `Create ${title}` : `Update ${title}`),
+                message: msg || (isNew ? `add!(content): created ${title}` : `fix!(content): updated ${title}`),
                 content: Buffer.from(content).toString('base64'),
                 sha: currentSha || undefined
             };
@@ -1189,7 +1189,7 @@ export default function Editor() {
 
             // Upload
             const uploadRes = await axios.put(`https://api.github.com/repos/${repoPath}/contents/${assetPath}`, {
-                message: `Upload ${finalName}`,
+                message: `add!(assets): uploaded ${finalName}`,
                 content: base64Data,
                 sha: assetSha
             }, {
@@ -1457,7 +1457,7 @@ export default function Editor() {
                     visible={isCommitModalVisible}
                     onDismiss={() => setIsCommitModalVisible(false)}
                     onPublish={handlePublish}
-                    initialMsg={isNew ? `Create ${title}` : `Update ${title}`}
+                    initialMsg={isNew ? `add!(content): created ${title}` : `fix!(content): updated ${title}`}
                     isDraft={isLocalDraft}
                     initialFilename={title}
                 />

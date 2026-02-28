@@ -60,7 +60,7 @@ export default function Config() {
                     if (e.response?.status === 404) {
                         // Create placeholder to initialize folder
                         await axios.put(`https://api.github.com/repos/${repoPath}/contents/${dir}/.gitkeep`, {
-                            message: `Initialize ${dir}`,
+                            message: `add!(setup): initialized ${dir}`,
                             content: 'Ym9vdHN0cmFw', // "bootstrap" in base64
                         }, {
                             headers: { Authorization: `token ${token}` }
@@ -96,7 +96,7 @@ export default function Config() {
                     }
 
                     await axios.put(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
-                        message: 'Update Flux site settings',
+                        message: 'fix!(config): updated Flux site settings',
                         content: Buffer.from(JSON.stringify(updatedRepoConfig, null, 2)).toString('base64'),
                         sha
                     }, {
@@ -151,7 +151,7 @@ export default function Config() {
                 await axios.delete(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
                     headers: { Authorization: `token ${token}` },
                     data: {
-                        message: 'Remove Flux site settings',
+                        message: 'fix!(config): removed Flux site settings',
                         sha: check.data.sha
                     }
                 });

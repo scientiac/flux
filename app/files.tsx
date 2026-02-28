@@ -248,7 +248,7 @@ const PublishDraftDialog = ({ visible, onDismiss, onPublish, initialTitle }: { v
 
     useEffect(() => {
         if (visible) {
-            setCommitMsg(`Create ${initialTitle}`);
+            setCommitMsg(`add!(content): created ${initialTitle}`);
         }
     }, [visible, initialTitle]);
 
@@ -848,7 +848,7 @@ export default function Files() {
             const token = await SecureStore.getItemAsync('github_access_token');
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: { message: `Delete ${selectedFile.name}`, sha: selectedFile.sha }
+                data: { message: `fix!(content): deleted ${selectedFile.name}`, sha: selectedFile.sha }
             });
             setTombstones(prev => new Set(prev).add(selectedFile.path));
             const updated = files.filter(f => f.path !== selectedFile.path);
@@ -868,7 +868,7 @@ export default function Files() {
                     } else if (Array.isArray(parentRes.data) && parentRes.data.length === 1 && parentRes.data[0].name === '.gitkeep') {
                         await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${parentRes.data[0].path}`, {
                             headers: { Authorization: `token ${token}` },
-                            data: { message: `Remove empty directory ${parentDir}`, sha: parentRes.data[0].sha }
+                            data: { message: `fix!(content): removed empty directory ${parentDir}`, sha: parentRes.data[0].sha }
                         });
                         // Remove the directory from the file list if we're viewing its parent
                         const dirName = parentDir.split('/').pop();
@@ -954,7 +954,7 @@ export default function Files() {
 
             // 4. Create commit
             const createCommitRes = await axios.post(`https://api.github.com/repos/${repoPath}/git/commits`, {
-                message: `Rename directory ${oldFile.name} to ${newName}`,
+                message: `fix!(content): renamed directory ${oldFile.name} to ${newName}`,
                 tree: createTreeRes.data.sha,
                 parents: [parentCommitSha]
             }, { headers: { Authorization: `token ${token}` } });
@@ -1008,13 +1008,13 @@ export default function Files() {
             });
 
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                message: `Rename ${oldFile.name} to ${cleanName}`,
+                message: `fix!(content): renamed ${oldFile.name} to ${cleanName}`,
                 content: response.data.content,
             }, { headers: { Authorization: `token ${token}` } });
 
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${oldFile.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: { message: `Delete old file after rename`, sha: oldFile.sha }
+                data: { message: `fix!(content): deleted old file after rename`, sha: oldFile.sha }
             });
 
             await setRepoFileCache(repoPath, optimisticFiles);
@@ -1037,7 +1037,7 @@ export default function Files() {
             const token = await SecureStore.getItemAsync('github_access_token');
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedAsset.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: { message: `Delete asset ${selectedAsset.name}`, sha: selectedAsset.sha }
+                data: { message: `fix!(assets): deleted ${selectedAsset.name}`, sha: selectedAsset.sha }
             });
             setTombstones(prev => new Set(prev).add(selectedAsset.path));
             const updated = assets.filter(f => f.path !== selectedAsset.path);
@@ -1074,12 +1074,12 @@ export default function Files() {
                 headers: { Authorization: `token ${token}` }
             });
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                message: `Rename ${oldAsset.name}`,
+                message: `fix!(assets): renamed ${oldAsset.name}`,
                 content: contentRes.data.content,
             }, { headers: { Authorization: `token ${token}` } });
             await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${oldAsset.path}`, {
                 headers: { Authorization: `token ${token}` },
-                data: { message: `Cleanup after rename`, sha: oldAsset.sha }
+                data: { message: `fix!(assets): cleaned up after rename`, sha: oldAsset.sha }
             });
             await setRepoAssetCache(repoPath, optimisticAssets);
             showToast(`Renamed to ${cleanName}`, 'success');
@@ -1174,7 +1174,7 @@ export default function Files() {
             });
 
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
-                message: `Upload asset ${finalName}`,
+                message: `add!(assets): uploaded asset ${finalName}`,
                 content: base64
             }, {
                 headers: { Authorization: `token ${token}` }
