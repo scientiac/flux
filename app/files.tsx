@@ -1410,6 +1410,7 @@ export default function Files() {
                                                     onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
                                                 />
                                             ))}
+                                            {isLoading && [1, 2, 3].map(i => <SkeletonItem key={`sk1-${i}`} isGrid />)}
                                         </View>
                                         <View style={styles.assetColumn}>
                                             {filteredAssets.filter((_, i) => i % 2 !== 0).map(item => (
@@ -1421,15 +1422,12 @@ export default function Files() {
                                                     onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
                                                 />
                                             ))}
+                                            {isLoading && (filteredAssets.length % 2 !== 0 ? [1, 2, 3, 4] : [1, 2, 3]).map(i => <SkeletonItem key={`sk2-${i}`} isGrid />)}
                                         </View>
                                     </View>
                                 ) : null
                             }
-                            ListFooterComponent={
-                                (isLoading && filteredAssets.length > 0) ? (
-                                    <ListingSkeleton isGrid />
-                                ) : null
-                            }
+                            ListFooterComponent={null}
                             ListEmptyComponent={
                                 isLoading ? (
                                     <ListingSkeleton isGrid />
