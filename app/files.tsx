@@ -376,26 +376,28 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
 });
 
 // Sub-component for Draft Item
-// Sub-component for DraftItem
 const DraftItem = memo(({ item, onPress, onDelete, onPublish, onRename }: { item: any, onPress: () => void, onDelete: () => void, onPublish: () => void, onRename: () => void }) => {
     const theme = useTheme();
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
             <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
-                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
-                    <View style={styles.draftHeader}>
-                        <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>
-                            {(item.title ? item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : 'untitled') + '.md'}
-                        </Text>
-                        <View style={{ flexDirection: 'row', gap: 4 }}>
-                            <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
-                            <IconButton mode="contained-tonal" icon="cloud-upload-outline" size={18} iconColor={theme.colors.primary} onPress={onPublish} />
-                            <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
+                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0, flexDirection: 'row', alignItems: 'center' }]}>
+                    <MaterialCommunityIcons name="file-document-edit-outline" size={24} color={theme.colors.primary} style={{ marginRight: 16 }} />
+                    <View style={{ flex: 1 }}>
+                        <View style={styles.draftHeader}>
+                            <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>
+                                {(item.title ? item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : 'untitled') + '.md'}
+                            </Text>
+                            <View style={{ flexDirection: 'row', gap: 4 }}>
+                                <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
+                                <IconButton mode="contained-tonal" icon="cloud-upload-outline" size={18} iconColor={theme.colors.primary} onPress={onPublish} />
+                                <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
+                            </View>
                         </View>
+                        <Text variant="labelSmall" style={styles.draftDate}>
+                            {formatRelativeDate(item.lastModified)}
+                        </Text>
                     </View>
-                    <Text variant="labelSmall" style={styles.draftDate}>
-                        {formatRelativeDate(item.lastModified)}
-                    </Text>
                 </View>
             </TouchableRipple>
         </Surface>
@@ -407,19 +409,22 @@ const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRen
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
             <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
-                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
-                    <View style={styles.draftHeader}>
-                        <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.name}</Text>
-                        <View style={{ flexDirection: 'row', gap: 4 }}>
-                            <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
-                            <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
+                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0, flexDirection: 'row', alignItems: 'center' }]}>
+                    <MaterialCommunityIcons name="file-document-outline" size={24} color={theme.colors.outline} style={{ marginRight: 16 }} />
+                    <View style={{ flex: 1 }}>
+                        <View style={styles.draftHeader}>
+                            <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.name}</Text>
+                            <View style={{ flexDirection: 'row', gap: 4 }}>
+                                <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
+                                <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
+                            </View>
                         </View>
+                        {item.lastModified && (
+                            <Text variant="labelSmall" style={styles.draftDate}>
+                                {formatRelativeDate(item.lastModified)}
+                            </Text>
+                        )}
                     </View>
-                    {item.lastModified && (
-                        <Text variant="labelSmall" style={styles.draftDate}>
-                            {formatRelativeDate(item.lastModified)}
-                        </Text>
-                    )}
                 </View>
             </TouchableRipple>
         </Surface>
@@ -453,9 +458,12 @@ const SkeletonItem = memo(({ isGrid }: { isGrid?: boolean }) => {
 
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
-            <View style={{ padding: 16, height: 76, justifyContent: 'center' }}>
-                <Animated.View style={[animatedStyle, { height: 18, width: '70%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4, marginBottom: 12 }]} />
-                <Animated.View style={[animatedStyle, { height: 12, width: '30%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+            <View style={{ padding: 16, height: 76, flexDirection: 'row', alignItems: 'center' }}>
+                <Animated.View style={[animatedStyle, { width: 24, height: 24, borderRadius: 12, backgroundColor: theme.colors.onSurfaceVariant, marginRight: 16 }]} />
+                <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <Animated.View style={[animatedStyle, { height: 18, width: '70%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4, marginBottom: 8 }]} />
+                    <Animated.View style={[animatedStyle, { height: 12, width: '30%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                </View>
             </View>
         </Surface>
     );
@@ -483,35 +491,45 @@ const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
 });
 
 // Sub-component for Directory Item
-const DirItem = memo(({ item, onPress, onRename }: { item: any, onPress: () => void, onRename?: () => void }) => {
+const DirItem = memo(({ item, onPress, onRename, onDelete }: { item: any, onPress: () => void, onRename?: () => void, onDelete?: () => void }) => {
     const theme = useTheme();
-    const isBack = item._isBack;
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surfaceVariant }}>
             <TouchableRipple onPress={onPress} style={{ flex: 1 }} rippleColor={theme.colors.onSurfaceVariant + '1F'} borderless={true}>
-                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0 }]}>
-                    <View style={styles.draftHeader}>
-                        <Text variant="titleMedium" numberOfLines={1} style={[styles.draftTitle, { color: isBack ? theme.colors.onSurfaceVariant : theme.colors.onSurface }]}>
-                            {item.name}
-                        </Text>
-                        <View style={{ flexDirection: 'row', gap: 4 }}>
-                            {!isBack && onRename && (
-                                <IconButton
-                                    mode="contained-tonal"
-                                    icon="cursor-text"
-                                    size={18}
-                                    iconColor={theme.colors.primary}
-                                    containerColor={theme.colors.surface}
-                                    onPress={onRename}
-                                />
-                            )}
-                            <IconButton
-                                mode="contained-tonal"
-                                icon={isBack ? 'arrow-up' : 'folder-outline'}
-                                size={18}
-                                iconColor={isBack ? theme.colors.onSurfaceVariant : theme.colors.primary}
-                                onPress={onPress}
-                            />
+                <View style={[styles.draftCard, { backgroundColor: 'transparent', borderColor: 'transparent', borderWidth: 0, flexDirection: 'row', alignItems: 'center' }]}>
+                    <MaterialCommunityIcons
+                        name="folder"
+                        size={24}
+                        color={theme.colors.primary}
+                        style={{ marginRight: 16 }}
+                    />
+                    <View style={{ flex: 1 }}>
+                        <View style={styles.draftHeader}>
+                            <Text variant="titleMedium" numberOfLines={1} style={[styles.draftTitle, { color: theme.colors.onSurface }]}>
+                                {item.name}
+                            </Text>
+                            <View style={{ flexDirection: 'row', gap: 4 }}>
+                                {onRename && (
+                                    <IconButton
+                                        mode="contained-tonal"
+                                        icon="cursor-text"
+                                        size={18}
+                                        iconColor={theme.colors.primary}
+                                        containerColor={theme.colors.surface}
+                                        onPress={onRename}
+                                    />
+                                )}
+                                {onDelete && (
+                                    <IconButton
+                                        mode="contained-tonal"
+                                        icon="delete-outline"
+                                        size={18}
+                                        iconColor={theme.colors.error}
+                                        containerColor={theme.colors.surface}
+                                        onPress={onDelete}
+                                    />
+                                )}
+                            </View>
                         </View>
                     </View>
                 </View>
@@ -580,6 +598,26 @@ export default function Files() {
     useEffect(() => {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
     }, []);
+
+    const fetchRecursive = async (path: string, token: string | null): Promise<any[]> => {
+        try {
+            const res = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${path}`, {
+                headers: { Authorization: `token ${token}` }
+            });
+            let all: any[] = [];
+            for (const item of res.data) {
+                all.push(item);
+                if (item.type === 'dir') {
+                    const sub = await fetchRecursive(item.path, token);
+                    all = all.concat(sub);
+                }
+            }
+            return all;
+        } catch (e) {
+            console.error('[Files] Recursive fetch failed', e);
+            return [];
+        }
+    };
 
     useEffect(() => {
         if (notice === 'no_changes') {
@@ -846,47 +884,65 @@ export default function Files() {
         setIsLoading(true);
         try {
             const token = await SecureStore.getItemAsync('github_access_token');
-            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
-                headers: { Authorization: `token ${token}` },
-                data: { message: `fix!(content): deleted ${selectedFile.name}`, sha: selectedFile.sha }
-            });
+
+            if (selectedFile._isDir) {
+                const allItems = await fetchRecursive(selectedFile.path, token);
+                const filesToDelete = allItems.filter(item => item.type === 'file');
+
+                for (const file of filesToDelete) {
+                    await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${file.path}`, {
+                        headers: { Authorization: `token ${token}` },
+                        data: { message: `fix!(content): deleted ${file.path} (recursive)`, sha: file.sha }
+                    });
+                }
+            } else {
+                await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${selectedFile.path}`, {
+                    headers: { Authorization: `token ${token}` },
+                    data: { message: `fix!(content): deleted ${selectedFile.name}`, sha: selectedFile.sha }
+                });
+            }
+
             setTombstones(prev => new Set(prev).add(selectedFile.path));
             const updated = files.filter(f => f.path !== selectedFile.path);
             setFiles(updated);
             await setRepoFileCache(repoPath, updated);
             showToast(`${selectedFile.name} deleted`, 'success');
 
-            // Auto-remove empty parent directory
-            const parentDir = selectedFile.path.substring(0, selectedFile.path.lastIndexOf('/'));
-            if (parentDir) {
-                try {
-                    const parentRes = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${parentDir}`, {
-                        headers: { Authorization: `token ${token}`, 'Cache-Control': 'no-cache' }
-                    });
-                    if (Array.isArray(parentRes.data) && parentRes.data.length === 0) {
-                        // Directory is empty — GitHub auto-removes it, but if there's a .gitkeep, delete it
-                    } else if (Array.isArray(parentRes.data) && parentRes.data.length === 1 && parentRes.data[0].name === '.gitkeep') {
-                        await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${parentRes.data[0].path}`, {
-                            headers: { Authorization: `token ${token}` },
-                            data: { message: `fix!(content): removed empty directory ${parentDir}`, sha: parentRes.data[0].sha }
+            // Auto-remove empty parent directory (only for files)
+            if (!selectedFile._isDir) {
+                const parentDir = selectedFile.path.substring(0, selectedFile.path.lastIndexOf('/'));
+                if (parentDir) {
+                    try {
+                        const parentRes = await axios.get(`https://api.github.com/repos/${repoPath}/contents/${parentDir}`, {
+                            headers: { Authorization: `token ${token}`, 'Cache-Control': 'no-cache' }
                         });
-                        // Remove the directory from the file list if we're viewing its parent
-                        const dirName = parentDir.split('/').pop();
-                        setFiles(prev => prev.filter(f => !(f._isDir && f.name === dirName)));
+                        if (parentRes.status === 200 && Array.isArray(parentRes.data) && parentRes.data.length === 0) {
+                            const checkPath = parentDir.split('/');
+                            checkPath.pop();
+                            setCurrentDir(checkPath.join('/'));
+                        } else if (Array.isArray(parentRes.data) && parentRes.data.length === 1 && parentRes.data[0].name === '.gitkeep') {
+                            await axios.delete(`https://api.github.com/repos/${repoPath}/contents/${parentRes.data[0].path}`, {
+                                headers: { Authorization: `token ${token}` },
+                                data: { message: `fix!(content): removed empty directory ${parentDir}`, sha: parentRes.data[0].sha }
+                            });
+                            // Remove the directory from the file list if we're viewing its parent
+                            const dirName = parentDir.split('/').pop();
+                            setFiles(prev => prev.filter(f => f.name !== dirName));
+                        }
+                    } catch (e) {
+                        // Ignore parent dir cleanup errors
                     }
-                } catch (dirErr: any) {
-                    // Not critical — just log it
-                    console.log('[Files] Empty dir cleanup skipped', dirErr.message);
                 }
             }
         } catch (e: any) {
+            console.error('[Files] Delete failed', e);
             showToast(`Delete failed: ${e.message}`, 'error');
         } finally {
             setIsLoading(false);
             setIsDeleteVisible(false);
             setSelectedFile(null);
         }
-    }, [selectedFile, repoPath, files, setRepoFileCache, showToast]);
+    }, [selectedFile, repoPath, files, setRepoFileCache, showToast, fetchRecursive]);
 
     const handleRenameDraft = async (newTitle: string) => {
         if (!selectedDraft || !newTitle) return;
@@ -1219,15 +1275,13 @@ export default function Files() {
     }, []);
 
     const renderPostItem = useCallback(({ item }: any) => {
-        if (item._isBack) {
-            return <DirItem item={item} onPress={handleNavigateUp} />;
-        }
         if (item._isDir) {
             return (
                 <DirItem
                     item={item}
                     onPress={() => handleDirPress(item.name)}
                     onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
+                    onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
                 />
             );
         }
@@ -1275,10 +1329,6 @@ export default function Files() {
         const dirs = filtered.filter(f => f._isDir).sort((a: any, b: any) => a.name.localeCompare(b.name));
         const posts = filtered.filter(f => !f._isDir);
         const result = [...dirs, ...posts];
-        // Prepend '..' back entry when inside a subdirectory
-        if (currentDir) {
-            result.unshift({ name: '(back)', path: '__back__', _isBack: true, _isDir: false });
-        }
         return result;
     }, [files, searchQuery, tombstones, currentDir, repoConfig?.showAdvancedFiles]);
     const filteredAssets = useMemo(() => assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path)), [assets, searchQuery, tombstones]);
@@ -1494,9 +1544,14 @@ export default function Files() {
                 />
 
                 <Dialog visible={isDeleteVisible} onDismiss={() => setIsDeleteVisible(false)} style={{ borderRadius: 28 }}>
-                    <Dialog.Title>Delete {mode === 'assets' ? 'Asset' : 'Post'}</Dialog.Title>
+                    <Dialog.Title>Delete {mode === 'assets' ? 'Asset' : selectedFile?._isDir ? 'Directory' : 'Post'}</Dialog.Title>
                     <Dialog.Content>
-                        <Text>Are you sure you want to delete '{mode === 'assets' ? selectedAsset?.name : selectedFile?.name}'?</Text>
+                        <Text>Are you sure you want to delete <Text style={{ fontWeight: 'bold' }}>{mode === 'assets' ? selectedAsset?.name : selectedFile?.name}</Text>?</Text>
+                        {selectedFile?._isDir && (
+                            <Text variant="bodySmall" style={{ marginTop: 12, color: theme.colors.error, fontWeight: 'bold' }}>
+                                WARNING: This will recursively delete ALL files inside this directory.
+                            </Text>
+                        )}
                     </Dialog.Content>
                     <Dialog.Actions>
                         <Button onPress={() => setIsDeleteVisible(false)}>Cancel</Button>
@@ -1539,21 +1594,30 @@ export default function Files() {
                     style={styles.fabContent}
                     onPress={handleAction}
                 />
-                <FAB
-                    icon="web"
-                    style={styles.fabContent}
-                    onPress={() => {
-                        if (repoConfig?.siteUrl) {
-                            Linking.openURL(repoConfig.siteUrl);
-                        } else {
+                <View style={{ alignItems: 'center', gap: 12 }}>
+                    {currentDir !== '' && mode === 'posts' && (
+                        <FAB
+                            icon="arrow-left"
+                            style={[styles.fabContent, { backgroundColor: theme.colors.surfaceVariant }]}
+                            onPress={handleNavigateUp}
+                        />
+                    )}
+                    <FAB
+                        icon="web"
+                        style={styles.fabContent}
+                        onPress={() => {
+                            if (repoConfig?.siteUrl) {
+                                Linking.openURL(repoConfig.siteUrl);
+                            } else {
+                                Linking.openURL(`https://github.com/${repoPath}`);
+                            }
+                        }}
+                        onLongPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                             Linking.openURL(`https://github.com/${repoPath}`);
-                        }
-                    }}
-                    onLongPress={() => {
-                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                        Linking.openURL(`https://github.com/${repoPath}`);
-                    }}
-                />
+                        }}
+                    />
+                </View>
             </View>
         </View >
     );
@@ -1603,7 +1667,7 @@ const styles = StyleSheet.create({
         right: 16,
         bottom: 16,
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-end',
         gap: 12,
     },
     fabContent: {

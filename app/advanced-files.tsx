@@ -59,9 +59,9 @@ const SkeletonItem = memo(() => {
 
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.surface }}>
-            <View style={{ padding: 16, height: 76, justifyContent: 'center' }}>
-                <Animated.View style={[animatedStyle, { height: 18, width: '70%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4, marginBottom: 12 }]} />
-                <Animated.View style={[animatedStyle, { height: 12, width: '30%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+            <View style={{ padding: 16, height: 60, flexDirection: 'row', alignItems: 'center' }}>
+                <Animated.View style={[animatedStyle, { width: 24, height: 24, borderRadius: 12, backgroundColor: theme.colors.onSurfaceVariant, marginRight: 16 }]} />
+                <Animated.View style={[animatedStyle, { height: 20, width: '60%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
             </View>
         </Surface>
     );
