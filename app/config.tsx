@@ -1,3 +1,4 @@
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import axios from 'axios';
 import { Buffer } from 'buffer';
 import * as Haptics from 'expo-haptics';
@@ -200,9 +201,9 @@ export default function Config() {
                         Settings for <Text style={{ fontWeight: 'bold', color: theme.colors.onBackground }}>{repoPath}</Text>
                     </Text>
                     {syncSettingsToGitHub && (
-                        <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12, backgroundColor: theme.colors.primaryContainer, flexDirection: 'row', alignItems: 'center' }}>
-                            <IconButton icon="sync" size={14} iconColor={theme.colors.onPrimaryContainer} style={{ margin: 0 }} />
-                            <Text variant="labelSmall" style={{ color: theme.colors.onPrimaryContainer, fontWeight: 'bold' }}>GitHub Sync Active</Text>
+                        <View style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, backgroundColor: theme.colors.primaryContainer, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <MaterialCommunityIcons name="sync" size={14} color={theme.colors.onPrimaryContainer} />
+                            <Text variant="labelSmall" style={{ color: theme.colors.onPrimaryContainer, fontWeight: 'bold', lineHeight: 14 }}>GitHub Sync Active</Text>
                         </View>
                     )}
                 </View>
@@ -320,12 +321,14 @@ export default function Config() {
                     <Switch value={showAdvancedFiles} onValueChange={setShowAdvancedFiles} />
                 </View>
 
-                <Surface elevation={1} style={{ padding: 16, borderRadius: 20, backgroundColor: theme.colors.primaryContainer + '33', marginTop: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: theme.colors.primary }}>
+                <Surface elevation={0} style={{ padding: 16, borderRadius: 20, backgroundColor: theme.colors.primaryContainer + '1A', marginTop: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: theme.colors.primary }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <IconButton icon="auto-fix" iconColor={theme.colors.primary} size={24} />
+                        <IconButton icon="information-outline" iconColor={theme.colors.primary} size={24} />
                         <View style={{ flex: 1 }}>
-                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                                Long-press the <Text style={{ fontWeight: 'bold' }}>Settings</Text> icon on the dashboard to enter <Text style={{ fontWeight: 'bold' }}>Advanced Mode</Text> for full repository file management and do the same to the <Text style={{ fontWeight: 'bold' }}>Globe</Text> icon on the dashboard to visit the <Text style={{ fontWeight: 'bold' }}>GitHub repository.</Text>.
+                            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, lineHeight: 18 }}>
+                                Long-press the <Text style={{ fontWeight: 'bold' }}>Settings</Text> icon on the dashboard to enter <Text style={{ fontWeight: 'bold' }}>Advanced Mode</Text> for full repository file management. Long-press the <Text style={{ fontWeight: 'bold' }}>Globe</Text> icon to visit the GitHub repository.
+                                {"\n\n"}
+                                <Text>Long-press any repository in the repo listing to open it directly in File Management mode, even if it's not setup as a site.</Text>
                             </Text>
                         </View>
                     </View>

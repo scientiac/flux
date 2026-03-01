@@ -15,7 +15,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": true,
-      "package": "com.scientiac.flux"
+      "package": "com.scientiac.flux",
+      "softwareKeyboardLayoutMode": "pan"
     },
     "web": {
       "output": "static",

@@ -1336,7 +1336,7 @@ export default function Editor() {
 
     return (
         <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
             style={[styles.container, { backgroundColor: theme.colors.background }]}
         >
             <Appbar.Header elevated={false} style={{ backgroundColor: theme.colors.background }}>
@@ -1564,6 +1564,6 @@ const styles = StyleSheet.create({
     },
     fabItem: {
         margin: 0,
-        elevation: 4,
+        elevation: 3,
     },
 });
