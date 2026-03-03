@@ -701,12 +701,10 @@ export default function Editor() {
     const [isLinkModalVisible, setIsLinkModalVisible] = useState(false);
 
     const [githubToken, setGithubToken] = useState<string | null>(null);
+    const keyboard = useAnimatedKeyboard();
+    const { height: screenHeight } = Dimensions.get('window');
 
     const inputRef = useRef<NativeTextInput>(null);
-    const keyboard = useAnimatedKeyboard();
-    const fabAnimatedStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: -keyboard.height.value }],
-    }));
 
     const AUTOSAVE_KEY = `flux_draft_${decodedPath}`;
 
@@ -845,6 +843,39 @@ export default function Editor() {
             textDecorationLine: 'underline',
             fontWeight: '300',
             letterSpacing: 0.5,
+        },
+    }), [theme]);
+
+    const pillStyles = useMemo(() => StyleSheet.create({
+        pillToolbar: {
+            position: 'absolute',
+            top: 8,
+            right: 16,
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: theme.colors.secondaryContainer,
+            borderRadius: 32,
+            paddingHorizontal: 4,
+            paddingVertical: 2,
+            borderWidth: 1,
+            borderColor: theme.colors.outlineVariant,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+            elevation: 4,
+            zIndex: 100,
+        },
+        pillItem: {
+            margin: 0,
+            backgroundColor: 'transparent',
+        },
+        pillDivider: {
+            width: 1,
+            height: 16,
+            backgroundColor: theme.colors.outlineVariant,
+            marginHorizontal: 0,
+            opacity: 0.5,
         },
     }), [theme]);
 
@@ -1314,11 +1345,10 @@ export default function Editor() {
             await new Promise(resolve => setTimeout(resolve, 800));
         }
 
+        Keyboard.dismiss();
         if (router.canGoBack()) {
-            Keyboard.dismiss();
             router.back();
         } else {
-            Keyboard.dismiss();
             // Fallback to files if we're at the root (prevents closing app)
             router.replace('/files');
         }
@@ -1429,40 +1459,48 @@ export default function Editor() {
             <View style={styles.editorContainer}>
                 <SlidingTabContainer selectedIndex={editorSelectedIndex}>
                     <View style={{ flex: 1 }}>
-                        <ScrollView contentContainerStyle={{ flexGrow: 1 }} keyboardShouldPersistTaps="handled">
+                        <Animated.ScrollView
+                            contentContainerStyle={{ flexGrow: 1 }}
+                            keyboardShouldPersistTaps="handled"
+                        >
                             {isLoading ? (
                                 <FullEditorSkeleton />
                             ) : (
-                                <NativeTextInput
-                                    ref={inputRef}
-                                    style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.background }]}
-                                    multiline
-                                    value={content}
-                                    onChangeText={setContent}
-                                    onSelectionChange={e => setSelection(e.nativeEvent.selection)}
-                                    placeholder={!isLoading && content === '' ? "Write something beautiful..." : ""}
-                                    textAlignVertical="top"
-                                    scrollEnabled={false} // Le t the parent ScrollView handle scrolling
-                                />
+                                <View style={{ position: 'relative' }}>
+                                    <NativeTextInput
+                                        ref={inputRef}
+                                        style={[styles.input, { color: theme.colors.onSurface, backgroundColor: theme.colors.background }]}
+                                        multiline
+                                        value={content}
+                                        onChangeText={setContent}
+                                        onSelectionChange={e => setSelection(e.nativeEvent.selection)}
+                                        placeholder={!isLoading && content === '' ? "Write something beautiful..." : ""}
+                                        textAlignVertical="top"
+                                        scrollEnabled={false} // Let the parent ScrollView handle scrolling
+                                    />
+                                </View>
                             )}
-                        </ScrollView>
-                        {/* Floating Action Buttons for adding content in Edit mode */}
-                        <Animated.View style={[styles.fabContainer, fabAnimatedStyle]}>
-                            <IconButton
-                                icon="link-plus"
-                                mode="contained"
-                                size={28}
-                                style={styles.fabItem}
-                                onPress={() => setIsLinkModalVisible(true)}
-                            />
-                            <IconButton
-                                icon="file-plus-outline"
-                                mode="contained"
-                                size={28}
-                                style={styles.fabItem}
-                                onPress={() => setIsAssetTypeVisible(true)}
-                            />
-                        </Animated.View>
+                        </Animated.ScrollView>
+                        {/* Premium Bottom Pill Toolbar (Fixed Bottom-Left) */}
+                        {editorSelectedIndex === 0 && !isLoading && (
+                            <View style={pillStyles.pillToolbar}>
+                                <IconButton
+                                    icon="link-plus"
+                                    size={20}
+                                    style={pillStyles.pillItem}
+                                    iconColor={theme.colors.onSecondaryContainer}
+                                    onPress={() => setIsLinkModalVisible(true)}
+                                />
+                                <View style={pillStyles.pillDivider} />
+                                <IconButton
+                                    icon="file-plus-outline"
+                                    size={20}
+                                    style={pillStyles.pillItem}
+                                    iconColor={theme.colors.onSecondaryContainer}
+                                    onPress={() => setIsAssetTypeVisible(true)}
+                                />
+                            </View>
+                        )}
                     </View>
 
                     {/* Preview Tab */}
@@ -1570,14 +1608,16 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: 40,
     },
-    fabContainer: {
-        position: 'absolute',
-        right: 16,
-        bottom: 16,
-        gap: 12, // Space between buttons
+    toolbar: {
+        flexDirection: 'row',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        backgroundColor: 'transparent',
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: 'rgba(0,0,0,0.1)',
+        alignItems: 'center',
     },
-    fabItem: {
-        margin: 0,
-        elevation: 3,
+    toolbarItem: {
+        margin: 4,
     },
 });
