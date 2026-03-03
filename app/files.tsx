@@ -1756,11 +1756,13 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        marginBottom: 4,
+        marginBottom: 0,
     },
     draftTitle: {
         flex: 1,
         fontWeight: 'bold',
+        paddingBottom: 0,
+        marginBottom: 0,
     },
     draftSnippet: {
         opacity: 0.7,
@@ -1769,6 +1771,8 @@ const styles = StyleSheet.create({
     },
     draftDate: {
         opacity: 0.5,
+        marginTop: -10,
+        marginBottom: 10,
     },
     rightActionContainer: { width: 100, paddingVertical: 8, paddingRight: 12 },
     leftActionContainer: { width: 100, paddingVertical: 8, paddingLeft: 12 },

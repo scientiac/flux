@@ -595,7 +595,7 @@ export default function AdvancedFiles() {
                 {isConfigured && (
                     <FAB icon="file-plus" style={[styles.fab, { backgroundColor: theme.colors.primaryContainer }]} onPress={() => setIsNewFileVisible(true)} />
                 )}
-                <FAB icon="upload" style={[styles.fab, { backgroundColor: theme.colors.primary }]} color="white" onPress={handlePickFile} />
+                <FAB icon="upload" style={[styles.fab, { backgroundColor: theme.colors.primaryContainer }]} onPress={handlePickFile} />
             </View>
 
             <Portal>
