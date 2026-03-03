@@ -14,7 +14,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, Linking, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
 import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Surface, TextInput, useTheme } from 'react-native-paper';
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
+import Animated, { Easing, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../../context/AppContext';
 
 const { width } = Dimensions.get('window');
@@ -703,6 +703,11 @@ export default function Editor() {
     const [githubToken, setGithubToken] = useState<string | null>(null);
 
     const inputRef = useRef<NativeTextInput>(null);
+    const keyboard = useAnimatedKeyboard();
+    const fabAnimatedStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: -keyboard.height.value }],
+    }));
+
     const AUTOSAVE_KEY = `flux_draft_${decodedPath}`;
 
     // Load Token for Image Rendering
@@ -1433,7 +1438,7 @@ export default function Editor() {
                             )}
                         </ScrollView>
                         {/* Floating Action Buttons for adding content in Edit mode */}
-                        <View style={styles.fabContainer}>
+                        <Animated.View style={[styles.fabContainer, fabAnimatedStyle]}>
                             <IconButton
                                 icon="link-plus"
                                 mode="contained"
@@ -1448,7 +1453,7 @@ export default function Editor() {
                                 style={styles.fabItem}
                                 onPress={() => setIsAssetTypeVisible(true)}
                             />
-                        </View>
+                        </Animated.View>
                     </View>
 
                     {/* Preview Tab */}

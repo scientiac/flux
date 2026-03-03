@@ -1500,7 +1500,7 @@ export default function Files() {
                     onDismiss={() => setIsNewFileVisible(false)}
                     onCreate={handleCreateFile}
                     title="New Post"
-                    label="Filename"
+                    label="Title"
                 />
 
                 <NewDraftDialog
