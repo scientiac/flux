@@ -713,6 +713,8 @@ export default function Editor() {
     // Load Token for Image Rendering
     useEffect(() => {
         SecureStore.getItemAsync('github_access_token').then(setGithubToken);
+        // Ensure keyboard is dismissed when leaving editor
+        return () => Keyboard.dismiss();
     }, []);
 
     const markdownStyle = useMemo(() => StyleSheet.create({
@@ -1003,6 +1005,8 @@ export default function Editor() {
     }, [content]);
 
     const handlePublish = async (msg: string) => {
+        Keyboard.dismiss();
+        setIsSaving(true);
         if (!repoPath || !repoConfig) return;
 
         let cleanPostPath = decodedPath.replace(/^\/+/, '').replace(/\/+/g, '/');
@@ -1048,13 +1052,15 @@ export default function Editor() {
                 headers: { Authorization: `token ${token}` }
             });
 
-            setSha(saveResponse.data.content.sha);
-            setSha(saveResponse.data.content.sha);
-            // setPendingAssets({}); // No longer used
-            await AsyncStorage.removeItem(AUTOSAVE_KEY);
-            if (isLocalDraft && draftId) {
-                await deleteDraft(draftId);
-            }
+            // Handle post-save tasks without blocking UI feedback
+            (async () => {
+                setSha(saveResponse.data.content.sha);
+                await AsyncStorage.removeItem(AUTOSAVE_KEY);
+                if (isLocalDraft && draftId) {
+                    await deleteDraft(draftId);
+                }
+            })();
+
             showToast('Published to GitHub', 'success');
 
             // Redirect to the new post URL if it was a draft
@@ -1309,8 +1315,10 @@ export default function Editor() {
         }
 
         if (router.canGoBack()) {
+            Keyboard.dismiss();
             router.back();
         } else {
+            Keyboard.dismiss();
             // Fallback to files if we're at the root (prevents closing app)
             router.replace('/files');
         }
@@ -1328,6 +1336,7 @@ export default function Editor() {
     }, [handleBack]);
 
     const handleDiscard = async () => {
+        Keyboard.dismiss();
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         // Clear autosave
         await AsyncStorage.removeItem(AUTOSAVE_KEY);

@@ -19,7 +19,6 @@ export default function Index() {
     const { config, updateConfig, updateRepoConfig, isConfigLoading, hasAutoRedirected, setHasAutoRedirected, cachedRepos, setCachedRepos, showToast } = useAppContext();
     const { token, isLoading: isAuthLoading, error, login, logout } = useGitHubAuth(GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET);
 
-    const [repos, setRepos] = useState<any[]>(cachedRepos || []);
     const [isFetchingRepos, setIsFetchingRepos] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [isBooting, setIsBooting] = useState(true);
@@ -28,14 +27,12 @@ export default function Index() {
     useEffect(() => {
         if (!isConfigLoading) {
             setIsBooting(false);
-            // Hide splash screen when config is loaded (or if we are waiting for repo fetch, handle it there)
-            // But main logic: if we are staying on Index, we wait for repos.
         }
     }, [isConfigLoading]);
 
     const fetchRepos = useCallback(async (isManualRefresh = false) => {
         if (!token) {
-            ExpoSplashScreen.hideAsync(); // If no token, show login immediately
+            ExpoSplashScreen.hideAsync();
             return;
         }
         if (isManualRefresh) setIsFetchingRepos(true);
@@ -46,19 +43,17 @@ export default function Index() {
                 },
                 params: {
                     sort: 'updated',
-                    per_page: 80, // Slightly reduced for speed
+                    per_page: 80,
                 },
             });
 
-            // Smart Diff: Light check (length and first item ID)
             const newData = response.data;
+            // Only update if data actually changed to avoid unnecessary re-renders
             const hasChanged = newData.length !== (cachedRepos?.length || 0) ||
                 (newData.length > 0 && newData[0].id !== cachedRepos?.[0]?.id);
 
-            if (hasChanged) {
-                setRepos(newData);
-                await setCachedRepos(newData);
-                console.log('[Index] Cache updated');
+            if (hasChanged || isManualRefresh) {
+                setCachedRepos(newData);
             }
         } catch (error) {
             console.error('Error fetching repos', error);
@@ -73,7 +68,6 @@ export default function Index() {
     }, [token]);
 
     useEffect(() => {
-        // Wait for both config and auth to be ready
         if (isConfigLoading || isAuthLoading) return;
 
         const isConfigured = config.repo && config.repoConfigs && config.repoConfigs[config.repo];
@@ -81,22 +75,15 @@ export default function Index() {
         if (token && isConfigured && !hasAutoRedirected) {
             setHasAutoRedirected(true);
             router.replace('/files');
-            // We stay in booting state while redirecting
             return;
         }
-
-        if (token && !isFetchingRepos) {
-            // Background sync even if we have cache
-            // fetchRepos(); // This is now handled by the new useEffect above
-        }
-
-        // Only stop booting if we are NOT redirecting
-        // const timer = setTimeout(() => setIsBooting(false), 50); // This is now handled by the new useEffect above
-        // return () => clearTimeout(timer);
     }, [token, isConfigLoading, isAuthLoading, config.repo, config.repoConfigs, hasAutoRedirected]);
 
-    const filteredRepos = repos.filter(repo =>
-        repo.name.toLowerCase().includes(searchQuery.toLowerCase())
+    const filteredRepos = useMemo(() =>
+        (cachedRepos || []).filter(repo =>
+            repo.name.toLowerCase().includes(searchQuery.toLowerCase())
+        ),
+        [cachedRepos, searchQuery]
     );
 
     const configuredRepos = useMemo(() =>
@@ -108,32 +95,33 @@ export default function Index() {
         [filteredRepos, config.repoConfigs]
     );
 
-    const handleRepoSelect = useCallback(async (repoPath: string) => {
+    const handleRepoSelect = useCallback((repoPath: string) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         const isAlreadyConfigured = !!(config.repoConfigs && config.repoConfigs[repoPath]);
-        await updateConfig({ repo: repoPath });
+
+        // Immediate state update
+        updateConfig({ repo: repoPath });
 
         if (isAlreadyConfigured) {
-            router.push('/files');
+            router.replace('/files');
         } else {
-            // Check for flux.json in the repo root
-            try {
-                const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
-                    headers: { Authorization: `token ${token}` }
-                });
-
-                if (response.data && response.data.content) {
-                    const content = Buffer.from(response.data.content, 'base64').toString('utf8');
-                    const repoConfig = JSON.parse(content);
-                    await updateRepoConfig(repoPath, repoConfig);
-                    showToast('Settings synced from GitHub', 'success');
-                    router.push('/files');
-                    return;
-                }
-            } catch (e: any) {
-                // Not found or access error, proceed to manual config
-                console.log('[Index] flux.json not found or error', e.message);
-            }
             router.push('/config');
+            (async () => {
+                try {
+                    const response = await axios.get(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
+                        headers: { Authorization: `token ${token}` }
+                    });
+
+                    if (response.data && response.data.content) {
+                        const content = Buffer.from(response.data.content, 'base64').toString('utf8');
+                        const repoConfig = JSON.parse(content);
+                        updateRepoConfig(repoPath, repoConfig);
+                        showToast('Settings synced from GitHub', 'success');
+                    }
+                } catch (e: any) {
+                    console.log('[Index] Background flux.json check failed', e.message);
+                }
+            })();
         }
     }, [config.repoConfigs, updateConfig, updateRepoConfig, router, token, showToast]);
 
@@ -175,7 +163,8 @@ export default function Index() {
     const repoKeyExtractor = useCallback((item: any) => item.id.toString(), []);
 
     // 1. Initial Launch / Redirecting
-    if (isBooting || isConfigLoading || isAuthLoading || (token && !hasAutoRedirected && config.repo && config.repoConfigs && config.repoConfigs[config.repo])) {
+    const isActuallyRedirecting = token && !hasAutoRedirected && config.repo && config.repoConfigs?.[config.repo];
+    if (isBooting || isConfigLoading || isAuthLoading || isActuallyRedirecting) {
         return (
             <View style={[styles.container, { backgroundColor: theme.colors.background }]} />
         );

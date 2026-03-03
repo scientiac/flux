@@ -29,8 +29,8 @@ export interface Draft {
 
 export interface AppContextType {
     config: AppConfig;
-    updateConfig: (newConfig: Partial<AppConfig>) => Promise<void>;
-    updateRepoConfig: (repoPath: string, repoConfig: Partial<RepoConfig>) => Promise<void>;
+    updateConfig: (newConfig: Partial<AppConfig>) => void;
+    updateRepoConfig: (repoPath: string, repoConfig: Partial<RepoConfig>) => void;
     removeRepoConfig: (repoPath: string) => Promise<void>;
     resetConfig: () => Promise<void>;
     isConfigLoading: boolean;
@@ -166,12 +166,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         return () => clearTimeout(timer);
     }, [repoCache, assetCache, isConfigLoading]);
 
-    const updateConfig = useCallback(async (newFields: Partial<AppConfig>) => {
+    const updateConfig = useCallback((newFields: Partial<AppConfig>) => {
         settingsPendingSave.current = true;
         setConfig(prev => ({ ...prev, ...newFields }));
     }, []);
 
-    const updateRepoConfig = useCallback(async (repoPath: string, repoConfig: Partial<RepoConfig>) => {
+    const updateRepoConfig = useCallback((repoPath: string, repoConfig: Partial<RepoConfig>) => {
         settingsPendingSave.current = true;
         setConfig(prev => ({
             ...prev,

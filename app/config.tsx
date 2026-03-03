@@ -28,64 +28,93 @@ export default function Config() {
     const [syncSettingsToGitHub, setSyncSettingsToGitHub] = useState(currentRepoConfig?.syncSettingsToGitHub ?? true);
     const [isValidating, setIsValidating] = useState(false);
 
+    // RESET FORM IMMEDIATELY ON CONFIG CHANGE
+    useEffect(() => {
+        if (currentRepoConfig) {
+            setContentDir(currentRepoConfig.contentDir || 'content/posts');
+            setUseStaticFolder(currentRepoConfig.useStaticFolder ?? true);
+            setStaticDir(currentRepoConfig.staticDir || 'static');
+            setAssetsDir(currentRepoConfig.assetsDir || 'assets');
+            setPostTemplate(currentRepoConfig.postTemplate || "+++\ntitle: {{title}}\ndate: {{date}}\ntime: {{time}}\n+++\n\n");
+            setSiteUrl(currentRepoConfig.siteUrl || '');
+            setShowAdvancedFiles(currentRepoConfig.showAdvancedFiles ?? false);
+            setSyncSettingsToGitHub(currentRepoConfig.syncSettingsToGitHub ?? true);
+        } else {
+            // Default values for new repo
+            setContentDir('content/posts');
+            setUseStaticFolder(true);
+            setStaticDir('static');
+            setAssetsDir('assets');
+            setPostTemplate("---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n");
+            setSiteUrl('');
+            setShowAdvancedFiles(false);
+            setSyncSettingsToGitHub(true);
+        }
+    }, [currentRepoConfig]);
+
     // Remove confirmation dialog
     const [removeDialogVisible, setRemoveDialogVisible] = useState(false);
 
     const validateAndSave = useCallback(async () => {
         if (!repoPath) return;
-        setIsValidating(true);
-        try {
-            const token = await SecureStore.getItemAsync('github_access_token');
-            if (!token) throw new Error('Not authenticated');
 
-            // Sanitize: strip trailing slashes to prevent // in paths
-            const cleanContentDir = contentDir.replace(/^\/+|\/+$/g, '');
-            const cleanStaticDir = staticDir.replace(/^\/+|\/+$/g, '');
-            const cleanAssetsDir = assetsDir.replace(/^\/+|\/+$/g, '');
+        // Sanitize: strip trailing slashes
+        const cleanContentDir = contentDir.replace(/^\/+|\/+$/g, '');
+        const cleanStaticDir = staticDir.replace(/^\/+|\/+$/g, '');
+        const cleanAssetsDir = assetsDir.replace(/^\/+|\/+$/g, '');
 
-            // 1. Ensure folders exist or create them
-            const dirs = [cleanContentDir];
-            if (useStaticFolder && cleanStaticDir && cleanAssetsDir) {
-                dirs.push(`${cleanStaticDir}/${cleanAssetsDir}`.replace(/\/+/g, '/'));
-            } else if (useStaticFolder && cleanStaticDir) {
-                dirs.push(cleanStaticDir);
-            } else if (cleanAssetsDir) {
-                dirs.push(cleanAssetsDir);
-            }
-            for (const dir of dirs) {
-                try {
-                    await axios.get(`https://api.github.com/repos/${repoPath}/contents/${dir}`, {
-                        headers: { Authorization: `token ${token}` }
-                    });
-                } catch (e: any) {
-                    if (e.response?.status === 404) {
-                        // Create placeholder to initialize folder
-                        await axios.put(`https://api.github.com/repos/${repoPath}/contents/${dir}/.gitkeep`, {
-                            message: `add!(setup): initialized ${dir}`,
-                            content: 'Ym9vdHN0cmFw', // "bootstrap" in base64
-                        }, {
+        const updatedRepoConfig = {
+            contentDir: cleanContentDir,
+            useStaticFolder,
+            staticDir: cleanStaticDir,
+            assetsDir: cleanAssetsDir,
+            postTemplate: postTemplate,
+            siteUrl: siteUrl.trim(),
+            showAdvancedFiles,
+            syncSettingsToGitHub
+        };
+
+        // 1. Save locally and navigate IMMEDIATELY
+        updateRepoConfig(repoPath, updatedRepoConfig);
+        showToast('Settings saved', 'success');
+
+        if (from === 'dashboard') router.back();
+        else router.replace('/files');
+
+        // 2. Perform heavy validation and sync in the background
+        (async () => {
+            try {
+                const token = await SecureStore.getItemAsync('github_access_token');
+                if (!token) return;
+
+                // Ensure folders exist or create them
+                const dirs = [cleanContentDir];
+                if (useStaticFolder && cleanStaticDir && cleanAssetsDir) {
+                    dirs.push(`${cleanStaticDir}/${cleanAssetsDir}`.replace(/\/+/g, '/'));
+                } else if (useStaticFolder && cleanStaticDir) {
+                    dirs.push(cleanStaticDir);
+                } else if (cleanAssetsDir) {
+                    dirs.push(cleanAssetsDir);
+                }
+
+                for (const dir of dirs) {
+                    try {
+                        await axios.get(`https://api.github.com/repos/${repoPath}/contents/${dir}`, {
                             headers: { Authorization: `token ${token}` }
                         });
-                    } else {
-                        throw e;
+                    } catch (e: any) {
+                        if (e.response?.status === 404) {
+                            await axios.put(`https://api.github.com/repos/${repoPath}/contents/${dir}/.gitkeep`, {
+                                message: `add!(setup): initialized ${dir}`,
+                                content: 'Ym9vdHN0cmFw',
+                            }, {
+                                headers: { Authorization: `token ${token}` }
+                            });
+                        }
                     }
                 }
-            }
 
-            const updatedRepoConfig = {
-                contentDir: cleanContentDir,
-                useStaticFolder,
-                staticDir: cleanStaticDir,
-                assetsDir: cleanAssetsDir,
-                postTemplate: postTemplate,
-                siteUrl: siteUrl.trim(),
-                showAdvancedFiles,
-                syncSettingsToGitHub
-            };
-
-            // 2. Sync flux.json to GitHub root
-            if (syncSettingsToGitHub) {
-                try {
+                if (syncSettingsToGitHub) {
                     let sha = undefined;
                     try {
                         const check = await axios.get(`https://api.github.com/repos/${repoPath}/contents/flux.json`, {
@@ -103,24 +132,12 @@ export default function Config() {
                     }, {
                         headers: { Authorization: `token ${token}` }
                     });
-                } catch (e: any) {
-                    console.error('[Config] flux.json sync failed', e.message);
-                    // We show a warning but don't block the local save
-                    showToast('Settings saved locally, but GitHub sync failed', 'info');
                 }
+            } catch (e: any) {
+                console.error('[Config] Background sync failed', e.message);
+                showToast('GitHub sync background task failed', 'error');
             }
-
-            updateRepoConfig(repoPath, updatedRepoConfig);
-            showToast('Settings saved successfully', 'success');
-            setTimeout(() => {
-                if (from === 'dashboard') router.back();
-                else router.replace('/files');
-            }, 1000);
-        } catch (e: any) {
-            showToast(e.message || 'Validation failed', 'error');
-        } finally {
-            setIsValidating(false);
-        }
+        })();
     }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, showAdvancedFiles, syncSettingsToGitHub, updateRepoConfig, from, router]);
 
     const handleBack = useCallback(() => {
