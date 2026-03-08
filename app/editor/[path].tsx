@@ -886,8 +886,15 @@ export default function Editor() {
     } : undefined, [githubToken]);
 
     // Custom Render Rules to fix Image "key" crash and handle Auth
-    const renderRules = useMemo(() => ({
-        image: (node: any, children: any, parent: any, styles: any) => {
+    const renderRules = useMemo(() => {
+        const hwState = { active: false };
+
+        return {
+            body: (node: any, children: any, parent: any, styles: any) => {
+                hwState.active = false;
+                return <View key={node.key} style={styles.body}>{children}</View>;
+            },
+            image: (node: any, children: any, parent: any, styles: any) => {
             const { src, alt } = node.attributes;
             let uri = src;
 
@@ -933,22 +940,26 @@ export default function Editor() {
         },
         text: (node: any, children: any, parent: any, styles: any) => {
             const content = node.content;
-            // Split into parts to handle custom markers
-            const parts = content.split(/(\[\[(?:HW|LIKE|REPLY):.*?\]\])/g);
+            // Split into parts to handle stateful handwriting and custom markers
+            const parts = content.split(/(\[\[HW_[SE]\]\]|\[\[(?:LIKE|REPLY):.*?\]\])/g);
 
             return (
                 <PaperText key={node.key}>
                     {parts.map((part: string, i: number) => {
-                        const hwMatch = part.match(/^\[\[HW:(.*?)\]\]$/);
-                        if (hwMatch) {
-                            return <PaperText key={i} style={styles.handwriting}>{hwMatch[1]}</PaperText>;
+                        if (part === '[[HW_S]]') {
+                            hwState.active = true;
+                            return null;
+                        }
+                        if (part === '[[HW_E]]') {
+                            hwState.active = false;
+                            return null;
                         }
 
                         const likeMatch = part.match(/^\[\[LIKE:(.*?)\|(.*?)\]\]$/);
                         if (likeMatch) {
                             const [url, label] = [likeMatch[1], likeMatch[2]];
                             return (
-                                <PaperText key={i} onPress={() => Linking.openURL(url)}>
+                                <PaperText key={i} onPress={() => Linking.openURL(url)} style={hwState.active ? styles.handwriting : undefined}>
                                     <MaterialCommunityIcons name="heart" size={16} color={theme.colors.error} />
                                     <PaperText style={styles.link}>{' '}{label}</PaperText>
                                 </PaperText>
@@ -959,19 +970,20 @@ export default function Editor() {
                         if (replyMatch) {
                             const [url, label] = [replyMatch[1], replyMatch[2]];
                             return (
-                                <PaperText key={i} onPress={() => Linking.openURL(url)}>
+                                <PaperText key={i} onPress={() => Linking.openURL(url)} style={hwState.active ? styles.handwriting : undefined}>
                                     <MaterialCommunityIcons name="reply" size={16} color={theme.colors.primary} />
                                     <PaperText style={styles.link}>{' '}{label}</PaperText>
                                 </PaperText>
                             );
                         }
 
-                        return part;
+                        return <PaperText key={i} style={hwState.active ? styles.handwriting : undefined}>{part}</PaperText>;
                     })}
                 </PaperText>
             );
         },
-    }), [repoPath, repoConfig, imageHeaders, theme]);
+        };
+    }, [repoPath, repoConfig, imageHeaders, theme]);
 
 
     const fetchFile = async () => {
@@ -1433,9 +1445,9 @@ export default function Editor() {
                             // Strip frontmatter (YAML or TOML) for preview
                             let clean = content.replace(/^---\s*[\s\S]*?\n---\s*\n?/, '').replace(/^\+\+\+\s*[\s\S]*?\n\+\+\+\s*\n?/, '');
 
-                            // Custom pre-processing for handwriting and webmention links
-                            // [_Text_] -> [[HW:Text]]
-                            clean = clean.replace(/\[_([\s\S]*?)_\]/g, '[[HW:$1]]');
+                            // [_Text_] -> [[HW_S]]Text[[HW_E]]
+                            // Using markers allows nested markdown like links to render correctly
+                            clean = clean.replace(/\[_([\s\S]*?)_\]/g, '[[HW_S]]$1[[HW_E]]');
 
                             // <a class="u-like-of" href="url">text</a> -> [[LIKE:url|text]]
                             clean = clean.replace(/<a class="u-like-of" href="([^"]+)">(.*?)<\/a>/g, '[[LIKE:$1|$2]]');
