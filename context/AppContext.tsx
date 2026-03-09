@@ -11,6 +11,7 @@ interface RepoConfig {
     siteUrl?: string;
     showAdvancedFiles?: boolean;
     syncSettingsToGitHub?: boolean;
+    sortBy?: 'alphabetical' | 'recency';
 }
 
 interface AppConfig {
@@ -63,7 +64,8 @@ const DEFAULT_REPO_CONFIG: RepoConfig = {
     staticDir: 'static',
     assetsDir: 'assets',
     postTemplate: "---\ntitle: {{title}}\ndate: {{date}}\ndraft: true\n---\n\n",
-    syncSettingsToGitHub: true
+    syncSettingsToGitHub: true,
+    sortBy: 'alphabetical'
 };
 
 const DEFAULT_CONFIG: AppConfig = {

@@ -1329,14 +1329,36 @@ export default function Files() {
         // Sort: directories first (alphabetical), then files
         const dirs = filtered.filter(f => f._isDir).sort((a: any, b: any) => a.name.localeCompare(b.name));
         const posts = filtered.filter(f => !f._isDir);
-        const result = [...dirs, ...posts];
-        return result;
+
+        if (repoConfig?.sortBy === 'recency') {
+            posts.sort((a: any, b: any) => {
+                const dateA = a.lastModified ? new Date(a.lastModified).getTime() : 0;
+                const dateB = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+                return dateB - dateA;
+            });
+        } else {
+            posts.sort((a: any, b: any) => a.name.localeCompare(b.name));
+        }
+
+        return [...dirs, ...posts];
     }, [files, searchQuery, tombstones, currentDir, repoConfig?.showAdvancedFiles]);
     const filteredAssets = useMemo(() => assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path)), [assets, searchQuery, tombstones]);
-    const filteredDrafts = useMemo(() => localDrafts.filter(d =>
-        (d.title.toLowerCase().includes(searchQuery.toLowerCase()) || d.content.toLowerCase().includes(searchQuery.toLowerCase())) &&
-        d.repoPath === repoPath
-    ), [localDrafts, searchQuery, repoPath]);
+    const filteredDrafts = useMemo(() => {
+        const filtered = localDrafts.filter(d =>
+            (d.title.toLowerCase().includes(searchQuery.toLowerCase()) || d.content.toLowerCase().includes(searchQuery.toLowerCase())) &&
+            d.repoPath === repoPath
+        );
+
+        if (repoConfig?.sortBy === 'recency') {
+            return [...filtered].sort((a: any, b: any) => {
+                const dateA = a.lastModified ? new Date(a.lastModified).getTime() : 0;
+                const dateB = b.lastModified ? new Date(b.lastModified).getTime() : 0;
+                return dateB - dateA;
+            });
+        }
+
+        return filtered.sort((a, b) => a.title.localeCompare(b.title));
+    }, [localDrafts, searchQuery, repoPath, repoConfig?.sortBy]);
 
     return (
         <View style={[styles.container, { backgroundColor: theme.colors.background }]}>

@@ -6,7 +6,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { useCallback, useEffect, useState } from 'react';
 import { BackHandler, ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Button, Dialog, HelperText, IconButton, Portal, Surface, Switch, Text, TextInput, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, HelperText, IconButton, Portal, SegmentedButtons, Surface, Switch, Text, TextInput, useTheme } from 'react-native-paper';
 import { useAppContext } from '../context/AppContext';
 
 export default function Config() {
@@ -26,6 +26,7 @@ export default function Config() {
     const [siteUrl, setSiteUrl] = useState(currentRepoConfig?.siteUrl || '');
     const [showAdvancedFiles, setShowAdvancedFiles] = useState(currentRepoConfig?.showAdvancedFiles ?? false);
     const [syncSettingsToGitHub, setSyncSettingsToGitHub] = useState(currentRepoConfig?.syncSettingsToGitHub ?? true);
+    const [sortBy, setSortBy] = useState<'alphabetical' | 'recency'>(currentRepoConfig?.sortBy || 'alphabetical');
     const [isValidating, setIsValidating] = useState(false);
 
     // RESET FORM IMMEDIATELY ON CONFIG CHANGE
@@ -39,6 +40,7 @@ export default function Config() {
             setSiteUrl(currentRepoConfig.siteUrl || '');
             setShowAdvancedFiles(currentRepoConfig.showAdvancedFiles ?? false);
             setSyncSettingsToGitHub(currentRepoConfig.syncSettingsToGitHub ?? true);
+            setSortBy(currentRepoConfig.sortBy || 'alphabetical');
         } else {
             // Default values for new repo
             setContentDir('content/posts');
@@ -71,7 +73,8 @@ export default function Config() {
             postTemplate: postTemplate,
             siteUrl: siteUrl.trim(),
             showAdvancedFiles,
-            syncSettingsToGitHub
+            syncSettingsToGitHub,
+            sortBy
         };
 
         // 1. Save locally and navigate IMMEDIATELY
@@ -332,10 +335,23 @@ export default function Config() {
                     <View style={{ flex: 1, paddingRight: 16 }}>
                         <Text variant="titleMedium" style={{ color: theme.colors.onBackground, fontWeight: '600' }}>Show All Files</Text>
                         <Text variant="bodySmall" style={{ color: theme.colors.outline, marginTop: 4 }}>
-                            Show non-markdown and hidden files (e.g. config, scripts, .gitignore) in the Posts tab. They can be renamed and deleted.
+                            Show non-markdown and hidden files (e.g. config, scripts, .gitignore) in the Posts tab.
                         </Text>
                     </View>
                     <Switch value={showAdvancedFiles} onValueChange={setShowAdvancedFiles} />
+                </View>
+
+                <View style={styles.inputGroup}>
+                    <Text variant="titleMedium" style={{ color: theme.colors.onBackground, fontWeight: '600', marginBottom: 8 }}>Sort Order</Text>
+                    <SegmentedButtons
+                        value={sortBy}
+                        onValueChange={(val: any) => setSortBy(val)}
+                        buttons={[
+                            { value: 'alphabetical', label: 'Alphabetical', icon: 'sort-alphabetical-ascending' },
+                            { value: 'recency', label: 'Recency', icon: 'clock-outline' },
+                        ]}
+                    />
+                    <HelperText type="info">Choose how your posts and drafts are ordered in the dashboard.</HelperText>
                 </View>
 
                 <Surface elevation={0} style={{ padding: 16, borderRadius: 20, backgroundColor: theme.colors.primaryContainer + '1A', marginTop: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: theme.colors.primary }}>
