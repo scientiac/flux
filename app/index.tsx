@@ -6,12 +6,53 @@ import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { Appbar, Avatar, Button, Dialog, List, Paragraph, Portal, Searchbar, Surface, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
 import { useGitHubAuth } from '../hooks/use-github-auth';
 
 // GitHub Credentials
 const GITHUB_CLIENT_ID = 'Ov23liyp3zLl9TB1Clwd';
 const GITHUB_CLIENT_SECRET = 'a03efac4eac7ca537543b68343a8bee65b6cb10b';
+
+const SkeletonItem = React.memo(() => {
+    const theme = useTheme();
+    const opacity = useSharedValue(0.1);
+
+    useEffect(() => {
+        opacity.value = withRepeat(
+            withSequence(
+                withTiming(0.25, { duration: 1000, easing: Easing.inOut(Easing.ease) }),
+                withTiming(0.1, { duration: 1000, easing: Easing.inOut(Easing.ease) })
+            ),
+            -1,
+            true
+        );
+    }, [opacity]);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        opacity: opacity.value,
+    }));
+
+    return (
+        <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 16, backgroundColor: theme.colors.surface }}>
+            <View style={{ padding: 16, height: 76, flexDirection: 'row', alignItems: 'center' }}>
+                <Animated.View style={[animatedStyle, { width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.onSurfaceVariant, marginRight: 16 }]} />
+                <View style={{ flex: 1, justifyContent: 'center' }}>
+                    <Animated.View style={[animatedStyle, { height: 18, width: '60%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4, marginBottom: 8 }]} />
+                    <Animated.View style={[animatedStyle, { height: 12, width: '40%', backgroundColor: theme.colors.onSurfaceVariant, borderRadius: 4 }]} />
+                </View>
+            </View>
+        </Surface>
+    );
+});
+
+const ListingSkeleton = React.memo(() => {
+    return (
+        <View style={{ width: '100%' }}>
+            {Array.from({ length: 8 }).map((_, i) => <SkeletonItem key={i} />)}
+        </View>
+    );
+});
 
 export default function Index() {
     const theme = useTheme();
@@ -35,7 +76,7 @@ export default function Index() {
             ExpoSplashScreen.hideAsync();
             return;
         }
-        if (isManualRefresh) setIsFetchingRepos(true);
+        setIsFetchingRepos(true);
         try {
             const response = await axios.get('https://api.github.com/user/repos', {
                 headers: {
@@ -58,7 +99,7 @@ export default function Index() {
         } catch (error) {
             console.error('Error fetching repos', error);
         } finally {
-            if (isManualRefresh) setIsFetchingRepos(false);
+            setIsFetchingRepos(false);
             ExpoSplashScreen.hideAsync();
         }
     }, [token, cachedRepos, setCachedRepos]);
@@ -278,12 +319,16 @@ export default function Index() {
                         </View>
                     ) : null}
                     renderItem={renderRepoItem}
-                    ListEmptyComponent={configuredRepos.length === 0 ? (
-                        <View style={styles.emptyState}>
-                            <Avatar.Icon size={64} icon="database-search" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
-                            <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No repositories match your search.</Text>
-                        </View>
-                    ) : null}
+                    ListEmptyComponent={
+                        (isFetchingRepos || isConfigLoading) ? (
+                            <ListingSkeleton />
+                        ) : configuredRepos.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Avatar.Icon size={64} icon="database-search" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} />
+                                <Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No repositories match your search.</Text>
+                            </View>
+                        ) : null
+                    }
                 />
             </View>
 

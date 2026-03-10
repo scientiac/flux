@@ -7,7 +7,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useState } from 'react';
 import { BackHandler, Dimensions, FlatList, RefreshControl, StyleSheet, View } from 'react-native';
-import { Appbar, Button, Dialog, FAB, IconButton, Portal, Searchbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
+import { Appbar, Button, Dialog, Divider, FAB, IconButton, Menu, Portal, Searchbar, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { useAppContext } from '../context/AppContext';
 
@@ -134,7 +134,7 @@ const ImageNameDialog = ({ visible, onDismiss, onConfirm, initialValue, extensio
 };
 
 // Item Renderers
-const FileItem = memo(({ item, onRename, onDelete, onCopy, onMove, onPress }: { item: any, onRename: () => void, onDelete: () => void, onCopy: () => void, onMove: () => void, onPress: () => void }) => {
+const FileItem = memo(({ item, onMenuPress, onPress }: { item: any, onMenuPress: (e: any) => void, onPress: () => void }) => {
     const theme = useTheme();
     const isDir = item.type === 'dir';
     return (
@@ -151,12 +151,11 @@ const FileItem = memo(({ item, onRename, onDelete, onCopy, onMove, onPress }: { 
                             />
                             <Text variant="titleMedium" numberOfLines={1} style={{ flex: 1, fontWeight: isDir ? '700' : '400' }}>{item.name}</Text>
                         </View>
-                        <View style={{ flexDirection: 'row', gap: 4 }}>
-                            <IconButton mode="contained-tonal" icon="content-copy" size={18} iconColor={theme.colors.secondary} containerColor={isDir ? theme.colors.surface : undefined} onPress={onCopy} />
-                            <IconButton mode="contained-tonal" icon="file-move-outline" size={18} iconColor={theme.colors.secondary} containerColor={isDir ? theme.colors.surface : undefined} onPress={onMove} />
-                            <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} containerColor={isDir ? theme.colors.surface : undefined} onPress={onRename} />
-                            <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} containerColor={isDir ? theme.colors.surface : undefined} onPress={onDelete} />
-                        </View>
+                        <IconButton
+                            icon="dots-vertical"
+                            size={20}
+                            onPress={onMenuPress}
+                        />
                     </View>
                 </View>
             </TouchableRipple>
@@ -189,6 +188,8 @@ export default function AdvancedFiles() {
     const [pickedAssetSize, setPickedAssetSize] = useState<number | undefined>();
     const [searchQuery, setSearchQuery] = useState('');
     const [clipboard, setClipboard] = useState<{ item: any, action: 'copy' | 'move' } | null>(null);
+    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
+    const [menuVisible, setMenuVisible] = useState(false);
 
     const filteredItems = React.useMemo(() => {
         if (!searchQuery) return items;
@@ -505,10 +506,11 @@ export default function AdvancedFiles() {
     const renderItem = ({ item }: { item: any }) => (
         <FileItem
             item={item}
-            onRename={() => { setSelectedItem(item); setIsRenameVisible(true); }}
-            onDelete={() => { setSelectedItem(item); setIsDeleteVisible(true); }}
-            onCopy={() => { setClipboard({ item, action: 'copy' }); showToast(`${item.name} copied to clipboard`, 'info'); }}
-            onMove={() => { setClipboard({ item, action: 'move' }); showToast(`Moving ${item.name}...`, 'info'); }}
+            onMenuPress={(e) => {
+                setMenuAnchor({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY });
+                setSelectedItem(item);
+                setMenuVisible(true);
+            }}
             onPress={() => {
                 if (item.type === 'dir') {
                     setCurrentPath(item.path);
@@ -599,6 +601,47 @@ export default function AdvancedFiles() {
             </View>
 
             <Portal>
+                <Menu
+                    visible={menuVisible}
+                    onDismiss={() => setMenuVisible(false)}
+                    anchor={menuAnchor}
+                >
+                    <Menu.Item
+                        onPress={() => {
+                            setMenuVisible(false);
+                            if (selectedItem) {
+                                setClipboard({ item: selectedItem, action: 'copy' });
+                                showToast(`${selectedItem.name} copied to clipboard`, 'info');
+                            }
+                        }}
+                        title="Copy"
+                        leadingIcon="content-copy"
+                    />
+                    <Menu.Item
+                        onPress={() => {
+                            setMenuVisible(false);
+                            if (selectedItem) {
+                                setClipboard({ item: selectedItem, action: 'move' });
+                                showToast(`Moving ${selectedItem.name}...`, 'info');
+                            }
+                        }}
+                        title="Move"
+                        leadingIcon="file-move-outline"
+                    />
+                    <Menu.Item
+                        onPress={() => { setMenuVisible(false); setIsRenameVisible(true); }}
+                        title="Rename"
+                        leadingIcon="cursor-text"
+                    />
+                    <Divider />
+                    <Menu.Item
+                        onPress={() => { setMenuVisible(false); setIsDeleteVisible(true); }}
+                        title="Delete"
+                        leadingIcon="delete-outline"
+                        titleStyle={{ color: theme.colors.error }}
+                    />
+                </Menu>
+
                 <RenameDialog
                     visible={isRenameVisible}
                     onDismiss={() => setIsRenameVisible(false)}

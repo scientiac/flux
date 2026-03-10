@@ -141,7 +141,7 @@ export default function Config() {
                 showToast('GitHub sync background task failed', 'error');
             }
         })();
-    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, showAdvancedFiles, syncSettingsToGitHub, updateRepoConfig, from, router]);
+    }, [repoPath, contentDir, useStaticFolder, staticDir, assetsDir, postTemplate, siteUrl, showAdvancedFiles, syncSettingsToGitHub, sortBy, updateRepoConfig, from, router]);
 
     const handleBack = useCallback(() => {
         if (!currentRepoConfig) {

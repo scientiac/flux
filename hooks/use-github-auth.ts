@@ -18,6 +18,7 @@ export function useGitHubAuth(clientId: string, clientSecret: string) {
     const [token, setToken] = React.useState<string | null>(null);
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
+    const processedCodeRef = React.useRef<string | null>(null);
 
     // This is the CRITICAL part for Android / Expo Go
     // We must use the proxy to get a valid https://auth.expo.io URL
@@ -52,17 +53,7 @@ export function useGitHubAuth(clientId: string, clientSecret: string) {
         loadToken();
     }, []);
 
-    React.useEffect(() => {
-        if (response?.type === 'success') {
-            const { code } = response.params;
-            handleExchangeCode(code);
-        } else if (response?.type === 'error') {
-            console.error('[GitHub Auth] Auth error:', response.error);
-            setError(response.error?.message || 'Authentication failed');
-        }
-    }, [response]);
-
-    async function handleExchangeCode(code: string) {
+    const handleExchangeCode = React.useCallback(async (code: string) => {
         setIsLoading(true);
         setError(null);
         try {
@@ -95,11 +86,25 @@ export function useGitHubAuth(clientId: string, clientSecret: string) {
         } finally {
             setIsLoading(false);
         }
-    }
+    }, [clientId, clientSecret, redirectUri, request?.codeVerifier]);
+
+    React.useEffect(() => {
+        if (response?.type === 'success') {
+            const { code } = response.params;
+            if (processedCodeRef.current !== code) {
+                processedCodeRef.current = code;
+                handleExchangeCode(code);
+            }
+        } else if (response?.type === 'error') {
+            console.error('[GitHub Auth] Auth error:', response.error);
+            setError(response.error?.message || 'Authentication failed');
+        }
+    }, [response, handleExchangeCode]);
 
     async function logout() {
         await SecureStore.deleteItemAsync(TOKEN_KEY);
         setToken(null);
+        processedCodeRef.current = null;
     }
 
     return {

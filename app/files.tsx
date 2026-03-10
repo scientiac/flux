@@ -11,8 +11,8 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import * as ExpoSplashScreen from 'expo-splash-screen';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, Dimensions, FlatList, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
-import { Appbar, Avatar, Button, Dialog, FAB, IconButton, Portal, Searchbar, SegmentedButtons, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
+import { ActivityIndicator, BackHandler, Dimensions, FlatList, GestureResponderEvent, Linking, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Appbar, Avatar, Button, Dialog, Divider, FAB, IconButton, Menu, Portal, Searchbar, SegmentedButtons, Surface, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
 import { Draft, useAppContext } from '../context/AppContext';
 
@@ -320,7 +320,7 @@ const AssetTypeDialog = ({ visible, onDismiss, onSelect }: { visible: boolean, o
 
 // Sub-component for Asset Item
 
-const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, headers: any, onRename: () => void, onDelete: () => void }) => {
+const AssetItem = memo(({ item, headers, onMenuPress }: { item: any, headers: any, onMenuPress: (e: any) => void }) => {
     const theme = useTheme();
     const [aspectRatio, setAspectRatio] = useState<number>(1); // Default to square until loaded
 
@@ -349,21 +349,12 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
                 )}
                 <View style={styles.assetOverlay}>
                     <IconButton
-                        icon="cursor-text"
+                        icon="dots-vertical"
                         mode="contained"
                         containerColor="rgba(0,0,0,0.5)"
                         iconColor="white"
-                        size={16}
-                        onPress={onRename}
-                        style={{ margin: 2 }}
-                    />
-                    <IconButton
-                        icon="delete"
-                        mode="contained"
-                        containerColor="rgba(0,0,0,0.5)"
-                        iconColor={theme.colors.error}
-                        size={16}
-                        onPress={onDelete}
+                        size={18}
+                        onPress={onMenuPress}
                         style={{ margin: 2 }}
                     />
                 </View>
@@ -376,7 +367,7 @@ const AssetItem = memo(({ item, headers, onRename, onDelete }: { item: any, head
 });
 
 // Sub-component for Draft Item
-const DraftItem = memo(({ item, repoConfig, onPress, onDelete, onPublish, onRename }: { item: any, repoConfig: any, onPress: () => void, onDelete: () => void, onPublish: () => void, onRename: () => void }) => {
+const DraftItem = memo(({ item, repoConfig, onPress, onMenuPress }: { item: any, repoConfig: any, onPress: () => void, onMenuPress: (e: any) => void }) => {
     const theme = useTheme();
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
@@ -388,11 +379,11 @@ const DraftItem = memo(({ item, repoConfig, onPress, onDelete, onPublish, onRena
                             <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>
                                 {(item.title ? item.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') : 'untitled') + '.md'}
                             </Text>
-                            <View style={{ flexDirection: 'row', gap: 4 }}>
-                                <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
-                                <IconButton mode="contained-tonal" icon="cloud-upload-outline" size={18} iconColor={theme.colors.primary} onPress={onPublish} />
-                                <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
-                            </View>
+                            <IconButton
+                                icon="dots-vertical"
+                                size={20}
+                                onPress={onMenuPress}
+                            />
                         </View>
                         <Text variant="labelSmall" style={styles.draftDate} numberOfLines={1}>
                             {formatRelativeDate(item.lastModified)} for /{(`${repoConfig?.contentDir || ''}/${item.dirPath || ''}`).replace(/\/+/g, '/').replace(/^\/+|\/+$/g, '')}
@@ -404,7 +395,7 @@ const DraftItem = memo(({ item, repoConfig, onPress, onDelete, onPublish, onRena
     );
 });
 
-const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRename: () => void, onDelete: () => void, onPress: () => void }) => {
+const FileItem = memo(({ item, onMenuPress, onPress }: { item: any, onMenuPress: (e: any) => void, onPress: () => void }) => {
     const theme = useTheme();
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surface }}>
@@ -414,10 +405,11 @@ const FileItem = memo(({ item, onRename, onDelete, onPress }: { item: any, onRen
                     <View style={{ flex: 1 }}>
                         <View style={styles.draftHeader}>
                             <Text variant="titleMedium" numberOfLines={1} style={styles.draftTitle}>{item.name}</Text>
-                            <View style={{ flexDirection: 'row', gap: 4 }}>
-                                <IconButton mode="contained-tonal" icon="cursor-text" size={18} iconColor={theme.colors.primary} onPress={onRename} />
-                                <IconButton mode="contained-tonal" icon="delete-outline" size={18} iconColor={theme.colors.error} onPress={onDelete} />
-                            </View>
+                            <IconButton
+                                icon="dots-vertical"
+                                size={20}
+                                onPress={onMenuPress}
+                            />
                         </View>
                         {item.lastModified && (
                             <Text variant="labelSmall" style={styles.draftDate}>
@@ -491,7 +483,7 @@ const ListingSkeleton = memo(({ isGrid }: { isGrid?: boolean }) => {
 });
 
 // Sub-component for Directory Item
-const DirItem = memo(({ item, onPress, onRename, onDelete }: { item: any, onPress: () => void, onRename?: () => void, onDelete?: () => void }) => {
+const DirItem = memo(({ item, onPress, onMenuPress }: { item: any, onPress: () => void, onMenuPress?: (e: any) => void }) => {
     const theme = useTheme();
     return (
         <Surface elevation={1} style={{ borderRadius: 16, overflow: 'hidden', marginVertical: 4, marginHorizontal: 0, backgroundColor: theme.colors.surfaceVariant }}>
@@ -508,28 +500,13 @@ const DirItem = memo(({ item, onPress, onRename, onDelete }: { item: any, onPres
                             <Text variant="titleMedium" numberOfLines={1} style={[styles.draftTitle, { color: theme.colors.onSurface }]}>
                                 {item.name}
                             </Text>
-                            <View style={{ flexDirection: 'row', gap: 4 }}>
-                                {onRename && (
-                                    <IconButton
-                                        mode="contained-tonal"
-                                        icon="cursor-text"
-                                        size={18}
-                                        iconColor={theme.colors.primary}
-                                        containerColor={theme.colors.surface}
-                                        onPress={onRename}
-                                    />
-                                )}
-                                {onDelete && (
-                                    <IconButton
-                                        mode="contained-tonal"
-                                        icon="delete-outline"
-                                        size={18}
-                                        iconColor={theme.colors.error}
-                                        containerColor={theme.colors.surface}
-                                        onPress={onDelete}
-                                    />
-                                )}
-                            </View>
+                            {onMenuPress && (
+                                <IconButton
+                                    icon="dots-vertical"
+                                    size={20}
+                                    onPress={onMenuPress}
+                                />
+                            )}
                         </View>
                     </View>
                 </View>
@@ -902,7 +879,7 @@ export default function Files() {
                 });
             }
 
-            setTombstones(prev => new Set(prev).add(selectedFile.path));
+            setTombstones((prev: Set<string>) => new Set(prev).add(selectedFile.path));
             const updated = files.filter(f => f.path !== selectedFile.path);
             setFiles(updated);
             await setRepoFileCache(repoPath, updated);
@@ -1095,7 +1072,7 @@ export default function Files() {
                 headers: { Authorization: `token ${token}` },
                 data: { message: `fix!(assets): deleted ${selectedAsset.name}`, sha: selectedAsset.sha }
             });
-            setTombstones(prev => new Set(prev).add(selectedAsset.path));
+            setTombstones((prev: Set<string>) => new Set(prev).add(selectedAsset.path));
             const updated = assets.filter(f => f.path !== selectedAsset.path);
             setAssets(updated);
             await setRepoAssetCache(repoPath, updated);
@@ -1274,50 +1251,60 @@ export default function Files() {
         return /\.(md|markdown|txt|json|yaml|yml|toml|html|css|js|ts|tsx|jsx|xml|csv|ini|cfg|conf|sh|bash|zsh|py|rb|go|rs|java|kt|c|cpp|h|hpp|gitignore|env|log)$/i.test(name) || !name.includes('.');
     }, []);
 
-    const renderPostItem = useCallback(({ item }: any) => {
+    const [menuVisible, setMenuVisible] = useState(false);
+    const [menuAnchor, setMenuAnchor] = useState({ x: 0, y: 0 });
+    const [menuContext, setMenuContext] = useState<{ type: 'post' | 'draft' | 'asset' | 'dir', item: any } | null>(null);
+
+    const openMenu = useCallback((event: GestureResponderEvent, type: 'post' | 'draft' | 'asset' | 'dir', item: any) => {
+        const { nativeEvent } = event;
+        setMenuAnchor({ x: nativeEvent.pageX, y: nativeEvent.pageY });
+        setMenuContext({ type, item });
+        if (type === 'draft') setSelectedDraft(item);
+        else if (type === 'asset') setSelectedAsset(item);
+        else setSelectedFile(item);
+        setMenuVisible(true);
+    }, []);
+
+    const renderItem = ({ item }: { item: any }) => {
         if (item._isDir) {
+            return <DirItem item={item} onPress={() => handleDirPress(item.name)} onMenuPress={(e) => openMenu(e, 'dir', item)} />;
+        }
+        if (mode === 'posts') {
+            const canEdit = isEditableFile(item.name);
             return (
-                <DirItem
+                <FileItem
                     item={item}
-                    onPress={() => handleDirPress(item.name)}
-                    onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
-                    onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
+                    onMenuPress={(e) => openMenu(e, 'post', item)}
+                    onPress={canEdit
+                        ? () => router.push(`/editor/${encodeURIComponent(item.path)}`)
+                        : () => { showToast(`Cannot edit binary file: ${item.name}`, 'info'); }
+                    }
                 />
             );
         }
-        const canEdit = isEditableFile(item.name);
-        return (
-            <FileItem
-                item={item}
-                onPress={canEdit
-                    ? () => router.push(`/editor/${encodeURIComponent(item.path)}`)
-                    : () => { showToast(`Cannot edit binary file: ${item.name}`, 'info'); }
-                }
-                onRename={() => { setSelectedFile(item); setIsRenameVisible(true); }}
-                onDelete={() => { setSelectedFile(item); setIsDeleteVisible(true); }}
-            />
-        );
-    }, [router, handleDirPress, handleNavigateUp, isEditableFile, showToast]);
-
-    const renderDraftItem = useCallback(({ item }: any) => (
-        <DraftItem
-            item={item}
-            repoConfig={repoConfig}
-            onPress={() => router.push(`/editor/draft_${item.id}`)}
-            onRename={() => { setSelectedDraft(item); setIsRenameDraftVisible(true); }}
-            onPublish={() => { setSelectedDraft(item); setIsPublishDialogVisible(true); }}
-            onDelete={() => { setSelectedDraft(item); setIsDeleteDraftVisible(true); }}
-        />
-    ), [router, repoConfig]);
-
-    const renderAssetItem = useCallback(({ item }: any) => (
-        <AssetItem
-            item={item}
-            headers={assetHeaders}
-            onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
-            onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
-        />
-    ), [assetHeaders]);
+        if (mode === 'drafts') {
+            return (
+                <DraftItem
+                    item={item}
+                    repoConfig={repoConfig}
+                    onMenuPress={(e) => openMenu(e, 'draft', item)}
+                    onPress={() => router.push(`/editor/draft_${item.id}`)}
+                />
+            );
+        }
+        if (mode === 'assets') {
+            const token = githubToken;
+            const headers = token ? { Authorization: `token ${token}` } : {};
+            return (
+                <AssetItem
+                    item={item}
+                    headers={headers}
+                    onMenuPress={(e) => openMenu(e, 'asset', item)}
+                />
+            );
+        }
+        return null;
+    };
 
     const filteredFiles = useMemo(() => {
         let filtered = files.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(f.path));
@@ -1425,7 +1412,7 @@ export default function Files() {
                                     progressBackgroundColor={theme.colors.surface}
                                 />
                             }
-                            renderItem={renderPostItem}
+                            renderItem={renderItem}
                             ListFooterComponent={
                                 (isLoading && filteredFiles.length > 0) ? (
                                     <ListingSkeleton />
@@ -1450,7 +1437,7 @@ export default function Files() {
                             data={filteredDrafts}
                             keyExtractor={draftKeyExtractor}
                             contentContainerStyle={styles.draftList}
-                            renderItem={renderDraftItem}
+                            renderItem={renderItem}
                             ListEmptyComponent={<View style={styles.emptyState}><Avatar.Icon size={64} icon="pencil-outline" style={{ backgroundColor: 'transparent' }} color={theme.colors.outline} /><Text variant="bodyLarge" style={{ color: theme.colors.outline, marginTop: 16 }}>No drafts yet.</Text></View>}
                         />
                     </View>
@@ -1479,8 +1466,7 @@ export default function Files() {
                                                     key={item.path}
                                                     item={item}
                                                     headers={githubToken ? { Authorization: `token ${githubToken}` } : {}}
-                                                    onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
-                                                    onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
+                                                    onMenuPress={(e) => openMenu(e, 'asset', item)}
                                                 />
                                             ))}
                                             {isLoading && [1, 2, 3].map(i => <SkeletonItem key={`sk1-${i}`} isGrid />)}
@@ -1491,8 +1477,7 @@ export default function Files() {
                                                     key={item.path}
                                                     item={item}
                                                     headers={githubToken ? { Authorization: `token ${githubToken}` } : {}}
-                                                    onRename={() => { setSelectedAsset(item); setIsRenameVisible(true); }}
-                                                    onDelete={() => { setSelectedAsset(item); setIsDeleteVisible(true); }}
+                                                    onMenuPress={(e) => openMenu(e, 'asset', item)}
                                                 />
                                             ))}
                                             {isLoading && (filteredAssets.length % 2 !== 0 ? [1, 2, 3, 4] : [1, 2, 3]).map(i => <SkeletonItem key={`sk2-${i}`} isGrid />)}
@@ -1517,6 +1502,60 @@ export default function Files() {
             </View>
 
             <Portal>
+                <Menu
+                    visible={menuVisible}
+                    onDismiss={() => setMenuVisible(false)}
+                    anchor={menuAnchor}
+                >
+                    {menuContext?.type === 'draft' && (
+                        <Menu.Item
+                            onPress={() => {
+                                setMenuVisible(false);
+                                setSelectedDraft(menuContext.item);
+                                setIsPublishDialogVisible(true);
+                            }}
+                            title="Publish"
+                            leadingIcon="cloud-upload-outline"
+                        />
+                    )}
+                    <Menu.Item
+                        onPress={() => {
+                            setMenuVisible(false);
+                            if (menuContext?.type === 'draft') {
+                                setSelectedDraft(menuContext.item);
+                                setIsRenameDraftVisible(true);
+                            } else if (menuContext?.type === 'asset') {
+                                setSelectedAsset(menuContext.item);
+                                setIsRenameAssetVisible(true);
+                            } else if (menuContext?.type === 'post' || menuContext?.type === 'dir') {
+                                setSelectedFile(menuContext.item);
+                                setIsRenameVisible(true);
+                            }
+                        }}
+                        title="Rename"
+                        leadingIcon="cursor-text"
+                    />
+                    <Divider />
+                    <Menu.Item
+                        onPress={() => {
+                            setMenuVisible(false);
+                            if (menuContext?.type === 'draft') {
+                                setSelectedDraft(menuContext.item);
+                                setIsDeleteDraftVisible(true);
+                            } else if (menuContext?.type === 'asset') {
+                                setSelectedAsset(menuContext.item);
+                                setIsDeleteVisible(true);
+                            } else if (menuContext?.type === 'post' || menuContext?.type === 'dir') {
+                                setSelectedFile(menuContext.item);
+                                setIsDeleteVisible(true);
+                            }
+                        }}
+                        title="Delete"
+                        leadingIcon="delete-outline"
+                        titleStyle={{ color: theme.colors.error }}
+                    />
+                </Menu>
+
                 <NewFileDialog
                     visible={isNewFileVisible}
                     onDismiss={() => setIsNewFileVisible(false)}
@@ -1552,9 +1591,17 @@ export default function Files() {
                 <RenameDialog
                     visible={isRenameVisible}
                     onDismiss={() => setIsRenameVisible(false)}
-                    onRename={mode === 'assets' ? handleRenameAsset : handleRenameFile}
-                    initialValue={mode === 'assets' ? (selectedAsset?.name?.split('.')[0] || '') : (selectedFile?.name?.replace('.md', '') || '')}
-                    title={mode === 'assets' ? 'Rename Asset' : (selectedFile?._isDir ? 'Rename Directory' : 'Rename Post')}
+                    onRename={handleRenameFile}
+                    initialValue={selectedFile?.name?.replace('.md', '') || ''}
+                    title={selectedFile?._isDir ? 'Rename Directory' : 'Rename Post'}
+                />
+
+                <RenameDialog
+                    visible={isRenameAssetVisible}
+                    onDismiss={() => setIsRenameAssetVisible(false)}
+                    onRename={handleRenameAsset}
+                    initialValue={selectedAsset?.name?.split('.')[0] || ''}
+                    title="Rename Asset"
                 />
 
                 <RenameDialog
@@ -1569,7 +1616,7 @@ export default function Files() {
                 <Dialog visible={isDeleteVisible} onDismiss={() => setIsDeleteVisible(false)} style={{ borderRadius: 28 }}>
                     <Dialog.Icon icon="alert-circle-outline" color={theme.colors.error} />
                     <Dialog.Title style={{ textAlign: 'center' }}>
-                        {mode === 'assets' ? 'Delete Asset?' : selectedFile?._isDir ? 'Delete Directory?' : 'Delete Post?'}
+                        {menuContext?.type === 'asset' ? 'Delete Asset?' : selectedFile?._isDir ? 'Delete Directory?' : 'Delete Post?'}
                     </Dialog.Title>
                     <Dialog.Content>
                         <Text style={{ textAlign: 'center' }}>
