@@ -11,7 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, Linking, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { BackHandler, Dimensions, FlatList, Keyboard, KeyboardAvoidingView, Linking, Text as RNText, TextInput as NativeTextInput, Platform, RefreshControl, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { default as Markdown } from 'react-native-markdown-display';
 import { Appbar, Button, Dialog, IconButton, Text as PaperText, Portal, SegmentedButtons, Surface, TextInput, useTheme } from 'react-native-paper';
 import Animated, { Easing, useAnimatedKeyboard, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from 'react-native-reanimated';
@@ -894,6 +894,26 @@ export default function Editor() {
                 hwState.active = false;
                 return <View key={node.key} style={styles.body}>{children}</View>;
             },
+            // Explicit heading rules — the library renders headings as View containers,
+            // but View can't cascade text styles in RN, so we render as Text directly.
+            heading1: (node: any, children: any, parent: any, styles: any) => (
+                <RNText key={node.key} style={markdownStyle.heading1}>{children}</RNText>
+            ),
+            heading2: (node: any, children: any, parent: any, styles: any) => (
+                <RNText key={node.key} style={markdownStyle.heading2}>{children}</RNText>
+            ),
+            heading3: (node: any, children: any, parent: any, styles: any) => (
+                <RNText key={node.key} style={markdownStyle.heading3}>{children}</RNText>
+            ),
+            heading4: (node: any, children: any, parent: any, styles: any) => (
+                <RNText key={node.key} style={[markdownStyle.heading3, { fontSize: 18 }]}>{children}</RNText>
+            ),
+            heading5: (node: any, children: any, parent: any, styles: any) => (
+                <RNText key={node.key} style={[markdownStyle.heading3, { fontSize: 16 }]}>{children}</RNText>
+            ),
+            heading6: (node: any, children: any, parent: any, styles: any) => (
+                <RNText key={node.key} style={[markdownStyle.heading3, { fontSize: 14 }]}>{children}</RNText>
+            ),
             image: (node: any, children: any, parent: any, styles: any) => {
             const { src, alt } = node.attributes;
             let uri = src;
@@ -940,6 +960,7 @@ export default function Editor() {
         },
         text: (node: any, children: any, parent: any, styles: any) => {
             const content = node.content;
+
             // Split into parts to handle stateful handwriting and custom markers
             const parts = content.split(/(\[\[HW_[SE]\]\]|\[\[(?:LIKE|REPLY):.*?\]\])/g);
 

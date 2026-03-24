@@ -1269,20 +1269,9 @@ export default function Files() {
         if (item._isDir) {
             return <DirItem item={item} onPress={() => handleDirPress(item.name)} onMenuPress={(e) => openMenu(e, 'dir', item)} />;
         }
-        if (mode === 'posts') {
-            const canEdit = isEditableFile(item.name);
-            return (
-                <FileItem
-                    item={item}
-                    onMenuPress={(e) => openMenu(e, 'post', item)}
-                    onPress={canEdit
-                        ? () => router.push(`/editor/${encodeURIComponent(item.path)}`)
-                        : () => { showToast(`Cannot edit binary file: ${item.name}`, 'info'); }
-                    }
-                />
-            );
-        }
-        if (mode === 'drafts') {
+        // Draft items have an 'id' and 'title' but no 'name' — handle them by type
+        // since SlidingTabContainer renders all tabs simultaneously
+        if (item.id && item.title !== undefined && item.content !== undefined) {
             return (
                 <DraftItem
                     item={item}
@@ -1292,14 +1281,27 @@ export default function Files() {
                 />
             );
         }
-        if (mode === 'assets') {
-            const token = githubToken;
-            const headers = token ? { Authorization: `token ${token}` } : {};
+        if (item.name) {
+            if (mode === 'assets') {
+                const token = githubToken;
+                const headers = token ? { Authorization: `token ${token}` } : {};
+                return (
+                    <AssetItem
+                        item={item}
+                        headers={headers}
+                        onMenuPress={(e) => openMenu(e, 'asset', item)}
+                    />
+                );
+            }
+            const canEdit = isEditableFile(item.name);
             return (
-                <AssetItem
+                <FileItem
                     item={item}
-                    headers={headers}
-                    onMenuPress={(e) => openMenu(e, 'asset', item)}
+                    onMenuPress={(e) => openMenu(e, 'post', item)}
+                    onPress={canEdit
+                        ? () => router.push(`/editor/${encodeURIComponent(item.path)}`)
+                        : () => { showToast(`Cannot edit binary file: ${item.name}`, 'info'); }
+                    }
                 />
             );
         }
@@ -1332,7 +1334,7 @@ export default function Files() {
     const filteredAssets = useMemo(() => assets.filter(a => a.name.toLowerCase().includes(searchQuery.toLowerCase()) && !tombstones.has(a.path)), [assets, searchQuery, tombstones]);
     const filteredDrafts = useMemo(() => {
         const filtered = localDrafts.filter(d =>
-            (d.title.toLowerCase().includes(searchQuery.toLowerCase()) || d.content.toLowerCase().includes(searchQuery.toLowerCase())) &&
+            ((d.title ?? '').toLowerCase().includes(searchQuery.toLowerCase()) || (d.content ?? '').toLowerCase().includes(searchQuery.toLowerCase())) &&
             d.repoPath === repoPath
         );
 
