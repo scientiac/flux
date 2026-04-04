@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { Buffer } from 'buffer';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -1194,17 +1195,7 @@ export default function Files() {
             const fullAssetsPath = [cleanStatic, cleanAssets].filter(Boolean).join('/');
             const newPath = `${fullAssetsPath}/${finalName}`.replace(/^\/+/, '').replace(/\/+/g, '/');
 
-            const resp = await fetch(lastPickedUri);
-            const blob = await resp.blob();
-            const base64: string = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const res = reader.result as string;
-                    resolve(res.split(',')[1]);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
-            });
+            const base64 = await new FileSystem.File(lastPickedUri).base64();
 
             await axios.put(`https://api.github.com/repos/${repoPath}/contents/${newPath}`, {
                 message: `add!(assets): uploaded asset ${finalName}`,

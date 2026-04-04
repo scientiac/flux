@@ -4,6 +4,7 @@ import axios from 'axios';
 import { Buffer } from 'buffer';
 import * as Clipboard from 'expo-clipboard';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -1277,13 +1278,7 @@ export default function Editor() {
             const token = await SecureStore.getItemAsync('github_access_token');
             if (!token) throw new Error('Not authenticated');
 
-            const response = await fetch(lastPickedUri);
-            const blob = await response.blob();
-            const reader = new FileReader();
-            const base64Data = await new Promise<string>((resolve) => {
-                reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
-                reader.readAsDataURL(blob);
-            });
+            const base64Data = await new FileSystem.File(lastPickedUri).base64();
 
             // Check if exists to get SHA (for overwrite)
             let assetSha = undefined;
